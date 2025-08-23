@@ -15,17 +15,6 @@ def write_file(file_name, clients):
                     "LOGGING_LEVEL=DEBUG"
                 ],
                 "networks": ["testing_net"]
-            },
-            "client1": {
-                "container_name": "client1",
-                "image": "client:latest",
-                "entrypoint": "/client",
-                "environment": [
-                    "CLI_ID=1",
-                    "CLI_LOG_LEVEL=DEBUG"
-                ],
-                "networks": ["testing_net"],
-                "depends_on": ["server"]
             }
         },
         "networks": {
@@ -39,6 +28,20 @@ def write_file(file_name, clients):
             }
         }
     }
+
+    for i in range(1, clients + 1):
+        client_name = f"client{i}"
+        data["services"][client_name] = {
+            "container_name": client_name,
+            "image": "client:latest",
+            "entrypoint": "/client",
+            "environment": [
+                f"CLI_ID={i}",
+                "CLI_LOG_LEVEL=DEBUG"
+            ],
+            "networks": ["testing_net"],
+            "depends_on": ["server"]
+        }
 
     with open(file_name, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)

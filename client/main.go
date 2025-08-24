@@ -5,6 +5,9 @@ import (
 	"os"
 	"strings"
 	"time"
+	"os/signal"
+	"syscall"
+	"context"
 
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
@@ -91,25 +94,38 @@ func PrintConfig(v *viper.Viper) {
 }
 
 func main() {
-	v, err := InitConfig()
-	if err != nil {
-		log.Criticalf("%s", err)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	defer stop()
+
+	var client *common.Client 
+	go func() {
+		v, err := InitConfig()
+		if err != nil {
+			log.Criticalf("%s", err)
+		}
+
+		if err := InitLogger(v.GetString("log.level")); err != nil {
+			log.Criticalf("%s", err)
+		}
+
+		PrintConfig(v)
+
+		clientConfig := common.ClientConfig{
+			ServerAddress: v.GetString("server.address"),
+			ID:            v.GetString("id"),
+			LoopAmount:    v.GetInt("loop.amount"),
+			LoopPeriod:    v.GetDuration("loop.period"),
+		}
+
+		client = common.NewClient(clientConfig)
+		client.StartClientLoop()
+	}()
+
+	<-ctx.Done()
+
+	log.Infof("action: exit | result: success")
+	
+	if client != nil {
+		client.Close() 
 	}
-
-	if err := InitLogger(v.GetString("log.level")); err != nil {
-		log.Criticalf("%s", err)
-	}
-
-	// Print program config with debugging purposes
-	PrintConfig(v)
-
-	clientConfig := common.ClientConfig{
-		ServerAddress: v.GetString("server.address"),
-		ID:            v.GetString("id"),
-		LoopAmount:    v.GetInt("loop.amount"),
-		LoopPeriod:    v.GetDuration("loop.period"),
-	}
-
-	client := common.NewClient(clientConfig)
-	client.StartClientLoop()
 }

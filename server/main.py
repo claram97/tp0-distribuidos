@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
+import signal
+import sys
 from configparser import ConfigParser
 from common.server import Server
 import logging
 import os
-
 
 def initialize_config():
     """ Parse env variables or config file to find program config params
@@ -48,6 +49,7 @@ def main():
                   f"listen_backlog: {listen_backlog} | logging_level: {logging_level}")
 
     # Initialize server and start server loop
+    global server
     server = Server(port, listen_backlog)
     server.run()
 
@@ -64,6 +66,12 @@ def initialize_log(logging_level):
         datefmt='%Y-%m-%d %H:%M:%S',
     )
 
+def finalize(signum, frame):
+    server.stop()
+    logging.info("action: exit | result: success")
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, finalize)
 
 if __name__ == "__main__":
     main()

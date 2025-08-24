@@ -8,6 +8,7 @@ class Server:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
+        self._client_connections = []
 
     def run(self):
         """
@@ -38,9 +39,12 @@ class Server:
             logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
             # TODO: Modify the send to avoid short-writes
             client_sock.send("{}\n".format(msg).encode('utf-8'))
+            self._client_connections.append(client_sock)
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
         finally:
+            if client_sock in self._client_connections:
+                self._client_connections.remove(client_sock)
             client_sock.close()
 
     def __accept_new_connection(self):
@@ -56,3 +60,14 @@ class Server:
         c, addr = self._server_socket.accept()
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
         return c
+
+    def stop(self):
+        self._server_socket.close()
+        for client_socket in self._client_connections:
+            client_socket.close()
+            logging.info("action: exit | result: success | client socket was closed")
+
+        self._client_connections.clear()
+        logging.info("action: exit | result: success | all client sockets were closed")
+
+        

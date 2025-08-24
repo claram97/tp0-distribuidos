@@ -14,6 +14,9 @@ def write_file(file_name, clients):
                     "PYTHONUNBUFFERED=1",
                     "LOGGING_LEVEL=DEBUG"
                 ],
+                "volumes": [
+                    "./server/config.ini:/server/config.ini:rw"
+                ],
                 "networks": ["testing_net"]
             }
         },

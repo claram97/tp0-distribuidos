@@ -42,6 +42,9 @@ def write_file(file_name, clients):
                 f"CLI_ID={i}",
                 "CLI_LOG_LEVEL=DEBUG"
             ],
+            "volumes": [
+                "./client/config.yaml:/config.yaml:rw"
+            ],
             "networks": ["testing_net"],
             "depends_on": ["server"]
         }

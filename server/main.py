@@ -41,6 +41,8 @@ def main():
     port = config_params["port"]
     listen_backlog = config_params["listen_backlog"]
 
+    signal.signal(signal.SIGTERM, finalize)
+
     initialize_log(logging_level)
 
     # Log config parameters at the beginning of the program to verify the configuration
@@ -70,8 +72,6 @@ def finalize(signum, frame):
     server.stop()
     logging.info("action: exit | result: success")
     sys.exit(0)
-
-signal.signal(signal.SIGTERM, finalize)
 
 if __name__ == "__main__":
     main()

@@ -65,9 +65,9 @@ class Server:
         self._server_socket.close()
         for client_socket in self._client_connections:
             client_socket.close()
-            logging.info("action: exit | result: success | client socket was closed")
+            logging.info("action: exit | result: success")
 
         self._client_connections.clear()
-        logging.info("action: exit | result: success | all client sockets were closed")
+        logging.info("action: exit | result: success")
 
         

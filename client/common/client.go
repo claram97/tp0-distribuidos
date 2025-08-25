@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"strings"
+	"io"
 
 	"github.com/op/go-logging"
 )
@@ -68,36 +70,30 @@ func (c *Client) StartClientLoop() {
 		// Create the connection the server in every loop iteration. Send an
 		c.createClientSocket()
 
-		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"NOMBRE=%v,APELLIDO=%v,DOCUMENTO=%v,NACIMIENTO=%v,NUMERO=%v,CLIENT_ID=%v,Message N°%v\n",
+		dataStr := fmt.Sprintf(
+			"NOMBRE=%v|APELLIDO=%v|DOCUMENTO=%v|NACIMIENTO=%v|NUMERO=%v|CLIENT_ID=%v|Message N°=%v|END",
 			c.config.Data.Nombre,
 			c.config.Data.Apellido,
 			c.config.Data.Documento,
 			c.config.Data.Nacimiento,
 			c.config.Data.Numero,
+			c.config.ID,
+			msgID,
 		)
+		lenStr := len(dataStr)
+		finalMsg := fmt.Sprintf("LEN=%d|%s\n", lenStr, dataStr)
 
-		// Idea: sumarle un checksum para verificar validez de los datos
-		// dataStr := fmt.Sprintf(
-        //     "NOMBRE=%v,APELLIDO=%v,DOCUMENTO=%v,NACIMIENTO=%v,NUMERO=%v,CLIENT_ID=%v,Message N°%v",
-        //     c.config.Data.Nombre,
-        //     c.config.Data.Apellido,
-        //     c.config.Data.Documento,
-        //     c.config.Data.Nacimiento,
-        //     c.config.Data.Numero,
-        //     c.config.ID,
-        //     msgID,
-        // )
+		n, err := io.WriteString(c.conn, finalMsg)
+		if err != nil {
+			log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return
+		}
+		if n != len(finalMsg) {
+			log.Errorf("action: send_message | result: short_write | client_id: %v | written: %d | expected: %d", c.config.ID, n, len(finalMsg))
+			return
+		}
 
-        // // Calcular checksum
-        // hash := md5.Sum([]byte(dataStr))
-        // checksum := hex.EncodeToString(hash[:])
-
-        // // Enviar datos + checksum
-        // fmt.Fprintf(c.conn, "%s|CHECKSUM=%s\n", dataStr, checksum)
-
+		log.Infof("Mensaje enviado: %s", finalMsg)
 
 		msg, err := bufio.NewReader(c.conn).ReadString('\n')
 		c.conn.Close()
@@ -108,6 +104,33 @@ func (c *Client) StartClientLoop() {
 				err,
 			)
 			return
+		}
+
+		// Parsear la respuesta del servidor (TO-DO: meterlo en una función)
+		parts := strings.Split(msg, "|")
+		if len(parts) >= 4 {
+			lenField := strings.Split(parts[0], "=")
+			if len(lenField) != 2 {
+				log.Errorf("action: server_response | result: invalid_len_field | client_id: %v | msg: %v", c.config.ID, msg)
+				return
+			}
+			expectedLen := lenField[1]
+			responseBody := strings.Join(parts[1:4], "|")
+			if fmt.Sprintf("%d", len(responseBody)) != expectedLen {
+				log.Errorf("action: server_response | result: len_mismatch | client_id: %v | expected: %v | got: %v", c.config.ID, expectedLen, len(responseBody))
+				return
+			}
+
+			status := strings.Split(parts[1], "=")[1]
+			info := strings.Split(parts[2], "=")[1]
+
+			if status == "success" {
+				log.Infof("action: server_response | result: success | client_id: %v | info: %v", c.config.ID, info)
+			} else {
+				log.Errorf("action: server_response | result: failed | client_id: %v | info: %v", c.config.ID, info)
+			}
+		} else {
+			log.Errorf("action: server_response | result: invalid_format | client_id: %v | msg: %v", c.config.ID, msg)
 		}
 
 		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",

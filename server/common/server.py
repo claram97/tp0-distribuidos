@@ -1,7 +1,6 @@
 import socket
 import logging
 
-
 class Server:
     def __init__(self, port, listen_backlog):
         # Initialize server socket
@@ -33,12 +32,57 @@ class Server:
         client socket will also be closed
         """
         try:
-            # TODO: Modify the receive to avoid short-reads
-            msg = client_sock.recv(1024).rstrip().decode('utf-8')
+            buffer = b""
+            while True:
+                chunk = client_sock.recv(1024)
+                if not chunk:
+                    break
+                buffer += chunk
+                if b"\n" in chunk:
+                    break
+            msg = buffer.decode('utf-8').strip()
+            
+            # TODO: función para decodificar el mensaje
+            splitted_msg = msg.split('|')
+            if len(splitted_msg) == 9:
+
+                len_str = splitted_msg[0].split('=')[1]
+                nombre = splitted_msg[1].split('=')[1]
+                apellido = splitted_msg[2].split('=')[1]
+                documento = splitted_msg[3].split('=')[1]
+                nacimiento = splitted_msg[4].split('=')[1]
+                numero = splitted_msg[5].split('=')[1]
+                client_id = splitted_msg[6].split('=')[1]
+                msg_id = splitted_msg[7].split('=')[1]
+                end = splitted_msg[8]
+                
+                # TODO: validar datos
+                received_len = len(splitted_msg[1]) + len(splitted_msg[2]) + len(splitted_msg[3]) + len(splitted_msg[4]) + len(splitted_msg[5]) + len(splitted_msg[6]) + len(splitted_msg[7]) + len(splitted_msg[8]) + 8
+                if int(len_str) != received_len:
+                    status='failed'
+                    info='la longitud del mensaje recibido no es correcta'
+                # TODO: agregar las validaciones acá
+                else:
+                    status='success'
+                    info='none'
+            else:
+                status='failed'
+                info='el mensaje recibido no tiene el formato esperado'
+            
             addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
-            # TODO: Modify the send to avoid short-writes
-            client_sock.send("{}\n".format(msg).encode('utf-8'))
+            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {splitted_msg}')
+
+            response_body = f"STATUS={status}|INFO={info}|END\n"
+            response = f"LEN={len(response_body)}|{response_body}"
+
+            response_bytes = response.encode('utf-8')
+            total_sent = 0
+            while total_sent < len(response_bytes):
+                sent = client_sock.send(response_bytes[total_sent:])
+                if sent == 0:
+                    raise RuntimeError("Socket connection broken")
+                total_sent += sent
+
             self._client_connections.append(client_sock)
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")

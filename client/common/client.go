@@ -3,11 +3,11 @@ package common
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"net"
 	"strings"
 	"time"
 	"context"
+	"strconv"
 
 	"github.com/op/go-logging"
 )
@@ -53,85 +53,136 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-func (c *Client) StartClientLoopWithContext(ctx context.Context) {
+//
+func parsedMessage(data BetData, clientID string, msgID int) string {
+	dataStr := fmt.Sprintf(
+		"NOMBRE=%v|APELLIDO=%v|DOCUMENTO=%v|NACIMIENTO=%v|NUMERO=%v|CLIENT_ID=%v|Message N°=%v|END",
+		data.Nombre,
+		data.Apellido,
+		data.Documento,
+		data.Nacimiento,
+		data.Numero,
+		clientID,
+		msgID,
+	)
+	return fmt.Sprintf("LEN=%d|%s\n", len(dataStr), dataStr)
+}
+
+func (c *Client) sendMessage(message string) error {
+    msgBytes := []byte(message)
+    totalWritten := 0
+    for totalWritten < len(msgBytes) {
+        n, err := c.conn.Write(msgBytes[totalWritten:])
+        if err != nil {
+            log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+            c.conn.Close()
+            c.conn = nil
+            return err
+        }
+        totalWritten += n
+    }
+    return nil
+}
+
+func (c *Client) receiveMessage() (string, error) {
+    msg, err := bufio.NewReader(c.conn).ReadString('\n')
+    c.conn.Close()
+    c.conn = nil
+    if err != nil {
+        log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+        return "", err
+    }
+    return msg, nil
+}
+
+func (c *Client) parseResponse(response string) error {
+	parts := strings.Split(response, "|")
+	if len(parts) < 4 {
+		return fmt.Errorf("invalid_format: %q", response)
+	}
+
+	// Validar campo LEN
+	expectedLen, err := parseLenField(parts[0])
+	if err != nil {
+		return fmt.Errorf("invalid_len_field: %w", err)
+	}
+
+	// Cuerpo real de la respuesta (sin LEN=)
+	responseBody := strings.Join(parts[1:4], "|")
+	if len(responseBody) != expectedLen {
+		return fmt.Errorf("len_mismatch: expected %d, got %d", expectedLen, len(responseBody))
+	}
+
+	// Parsear status e info
+	status, info, err := parseStatusAndInfo(parts[1], parts[2])
+	if err != nil {
+		return fmt.Errorf("invalid_status_info: %w", err)
+	}
+
+	// Logs según resultado
+	if status == "success" {
+		log.Infof("action: server_response | result: success | client_id: %v | info: %v", c.config.ID, info)
+	} else {
+		log.Errorf("action: server_response | result: failed | client_id: %v | info: %v", c.config.ID, info)
+	}
+
+	log.Infof("action: receive_message | result: success | client_id: %v | msg: %v", c.config.ID, response)
+	return nil
+}
+
+// ---- funciones auxiliares ----
+
+func parseLenField(field string) (int, error) {
+	parts := strings.Split(field, "=")
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("bad format in LEN field: %q", field)
+	}
+	expectedLen, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, fmt.Errorf("LEN not an integer: %q", parts[1])
+	}
+	return expectedLen, nil
+}
+
+func parseStatusAndInfo(statusField, infoField string) (string, string, error) {
+	statusParts := strings.Split(statusField, "=")
+	infoParts := strings.Split(infoField, "=")
+
+	if len(statusParts) != 2 || len(infoParts) != 2 {
+		return "", "", fmt.Errorf("bad format in status/info fields: %q | %q", statusField, infoField)
+	}
+
+	return statusParts[1], infoParts[1], nil
+}
+
+
+func (c *Client) StartClientLoop(ctx context.Context) {
 	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
 		select {
 		case <-ctx.Done():
-			log.Infof("action: loop_interrupted | result: sigterm | client_id: %v", c.config.ID)
+			log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
 			return
 		default:
 			if err := c.createClientSocket(); err != nil {
 				return
 			}
 
-			dataStr := fmt.Sprintf(
-				"NOMBRE=%v|APELLIDO=%v|DOCUMENTO=%v|NACIMIENTO=%v|NUMERO=%v|CLIENT_ID=%v|Message N°=%v|END",
-				c.config.Data.Nombre,
-				c.config.Data.Apellido,
-				c.config.Data.Documento,
-				c.config.Data.Nacimiento,
-				c.config.Data.Numero,
-				c.config.ID,
-				msgID,
-			)
-			finalMsg := fmt.Sprintf("LEN=%d|%s\n", len(dataStr), dataStr)
-
-			n, err := io.WriteString(c.conn, finalMsg)
-			if err != nil {
-				log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				c.conn.Close()
-				c.conn = nil
-				return
-			}
-			if n != len(finalMsg) {
-				log.Errorf("action: send_message | result: short_write | client_id: %v | written: %d | expected: %d",
-					c.config.ID, n, len(finalMsg))
-				c.conn.Close()
-				c.conn = nil
+			message := parsedMessage(c.config.Data, c.config.ID, msgID)
+			if err := c.sendMessage(message); err != nil {
 				return
 			}
 
-			log.Infof("Mensaje enviado: %s", finalMsg)
-
-			msg, err := bufio.NewReader(c.conn).ReadString('\n')
-			c.conn.Close()
-			c.conn = nil
+			response, err := c.receiveMessage()
 			if err != nil {
-				log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
 				return
 			}
 
 			log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %s",
 				c.config.Data.Documento, c.config.Data.Numero)
 
-			parts := strings.Split(msg, "|")
-			if len(parts) >= 4 {
-				lenField := strings.Split(parts[0], "=")
-				if len(lenField) != 2 {
-					log.Errorf("action: server_response | result: invalid_len_field | client_id: %v | msg: %v", c.config.ID, msg)
-					return
-				}
-				expectedLen := lenField[1]
-				responseBody := strings.Join(parts[1:4], "|")
-				if fmt.Sprintf("%d", len(responseBody)) != expectedLen {
-					log.Errorf("action: server_response | result: len_mismatch | client_id: %v | expected: %v | got: %v", c.config.ID, expectedLen, len(responseBody))
-					return
-				}
-
-				status := strings.Split(parts[1], "=")[1]
-				info := strings.Split(parts[2], "=")[1]
-
-				if status == "success" {
-					log.Infof("action: server_response | result: success | client_id: %v | info: %v", c.config.ID, info)
-				} else {
-					log.Errorf("action: server_response | result: failed | client_id: %v | info: %v", c.config.ID, info)
-				}
-			} else {
-				log.Errorf("action: server_response | result: invalid_format | client_id: %v | msg: %v", c.config.ID, msg)
+			if err := c.parseResponse(response); err != nil {
+				log.Errorf("action: parse_response | result: failed | client_id: %v | error: %v", c.config.ID, err)
 			}
-
-			log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-				c.config.ID, msg)
 
 			select {
 			case <-ctx.Done():

@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 	"context"
+   	"unicode"
+
 
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
@@ -17,6 +19,41 @@ import (
 )
 
 var log = logging.MustGetLogger("log")
+
+func isAlpha(s string) bool {
+    for _, r := range s {
+        if !unicode.IsLetter(r) && r != ' ' {
+            return false
+        }
+    }
+    return true
+}
+
+func validateParameters(v *viper.Viper) error {
+	nombre := v.GetString("nombre")
+	apellido := v.GetString("apellido")
+	documento := v.GetString("documento")
+	nacimiento := v.GetString("nacimiento")
+	numero := v.GetString("numero")
+
+	if nombre == "" || apellido == "" || documento == "" || nacimiento == "" || numero == "" {
+		return fmt.Errorf("missing_parameters")
+	}
+
+	if !isAlpha(nombre) {
+		return fmt.Errorf("nombre must be alphabetic")
+	}
+
+	if !isAlpha(apellido) {
+		return fmt.Errorf("apellido must be alphabetic")
+	}
+
+	if len(documento) != 8 {
+		return fmt.Errorf("documento must be 8 digits")
+	}
+
+	return nil
+}
 
 // InitConfig Function that uses viper library to parse configuration parameters.
 // Viper is configured to read variables from both environment variables and the
@@ -69,7 +106,10 @@ func InitConfig() (*viper.Viper, error) {
 	}
 
 	// TO-DO: add validation for correct values (for example, 'documento' has 8 numbers)
-
+	resultOfValidation := validateParameters(v)
+	if resultOfValidation != nil {
+		return nil, resultOfValidation
+	}
 	return v, nil
 }
 
@@ -150,7 +190,7 @@ func main() {
 
 	done := make(chan struct{})
 	go func() {
-		client.StartClientLoopWithContext(ctx)
+		client.StartClientLoop(ctx)
 		close(done)
 	}()
 

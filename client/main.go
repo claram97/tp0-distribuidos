@@ -97,6 +97,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
 
+	done := make(chan struct{}) // canal que indica que el loop terminó
+
 	var client *common.Client 
 	go func() {
 		v, err := InitConfig()
@@ -118,13 +120,19 @@ func main() {
 		}
 
 		client = common.NewClient(clientConfig)
-		client.StartClientLoop()
+
+		// Pasamos el ctx al loop
+		client.StartClientLoop(ctx)
+		close(done)
 	}()
 
-	<-ctx.Done()
+	select {
+	case <-ctx.Done(): // recibió SIGTERM
+		log.Infof("action: exit | result: success")
+	case <-done: // terminó de enviar/recibir todos los mensajes
+		log.Infof("action: exit | result: success")
+	}
 
-	log.Infof("action: exit | result: success")
-	
 	if client != nil {
 		client.Close() 
 	}

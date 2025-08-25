@@ -13,9 +13,6 @@ def write_file(file_name, clients):
                 "environment": [
                     "PYTHONUNBUFFERED=1",
                 ],
-                "env_file": [
-                    "client.env",
-                ],
                 "volumes": [
                     "./server/config.ini:/server/config.ini:rw"
                 ],
@@ -42,6 +39,9 @@ def write_file(file_name, clients):
             "entrypoint": "/client",
             "environment": [
                 f"CLI_ID={i}",
+            ],
+            "env_file": [
+                "client.env",
             ],
             "volumes": [
                 "./client/config.yaml:/config.yaml:rw"

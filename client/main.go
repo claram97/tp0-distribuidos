@@ -117,44 +117,49 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
 
-	var client *common.Client 
+	v, err := InitConfig()
+	if err != nil {
+		log.Criticalf("%s", err)
+		os.Exit(1)
+	}
+
+	if err := InitLogger(v.GetString("log.level")); err != nil {
+		log.Criticalf("%s", err)
+		os.Exit(1)
+	}
+
+	PrintConfig(v)
+
+	betData := common.BetData{
+		Nombre:     v.GetString("nombre"),
+		Apellido:   v.GetString("apellido"),
+		Documento:  v.GetString("documento"),
+		Nacimiento: v.GetString("nacimiento"),
+		Numero:     v.GetString("numero"),
+	}
+
+	clientConfig := common.ClientConfig{
+		ServerAddress: v.GetString("server.address"),
+		ID:            v.GetString("id"),
+		LoopAmount:    v.GetInt("loop.amount"),
+		LoopPeriod:    v.GetDuration("loop.period"),
+		Data:          betData,
+	}
+
+	client := common.NewClient(clientConfig)
+
+	done := make(chan struct{})
 	go func() {
-		v, err := InitConfig()
-		if err != nil {
-			log.Criticalf("%s", err)
-		}
-
-		if err := InitLogger(v.GetString("log.level")); err != nil {
-			log.Criticalf("%s", err)
-		}
-
-		PrintConfig(v)
-
-		betData := common.BetData{
-			Nombre:     v.GetString("nombre"),
-			Apellido:   v.GetString("apellido"),
-			Documento:  v.GetString("documento"),
-			Nacimiento: v.GetString("nacimiento"),
-			Numero:     v.GetString("numero"),
-		}
-
-		clientConfig := common.ClientConfig{
-			ServerAddress: v.GetString("server.address"),
-			ID:            v.GetString("id"),
-			LoopAmount:    v.GetInt("loop.amount"),
-			LoopPeriod:    v.GetDuration("loop.period"),
-			Data: betData,
-		}
-
-		client = common.NewClient(clientConfig)
-		client.StartClientLoop()
+		client.StartClientLoopWithContext(ctx)
+		close(done)
 	}()
 
-	<-ctx.Done()
-
-	log.Infof("action: exit | result: success")
-	
-	if client != nil {
-		client.Close() 
+	select {
+	case <-done:
+		log.Infof("action: client_finished | result: success | client_id: %s", clientConfig.ID)
+	case <-ctx.Done():
+		log.Infof("action: sigterm_received | result: exiting | client_id: %s", clientConfig.ID)
 	}
+
+	client.Close()
 }

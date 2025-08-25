@@ -1,6 +1,9 @@
 import socket
 import logging
 
+from common.utils import Bet, store_bets
+
+
 class Server:
     def __init__(self, port, listen_backlog):
         # Initialize server socket
@@ -72,6 +75,9 @@ class Server:
             addr = client_sock.getpeername()
             logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {splitted_msg}')
 
+            # Log pedido por consigna
+            store_bets([Bet(agency=1, first_name=nombre, last_name=apellido, document=documento, birthdate=nacimiento, number=numero)])
+            logging.info(f'action: apuesta_almacenada | result: success | dni: {documento} | numero: {numero}.')
             response_body = f"STATUS={status}|INFO={info}|END\n"
             response = f"LEN={len(response_body)}|{response_body}"
 

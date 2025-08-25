@@ -71,10 +71,34 @@ func (c *Client) StartClientLoop() {
 		// TODO: Modify the send to avoid short-write
 		fmt.Fprintf(
 			c.conn,
-			"[CLIENT %v] Message N°%v\n",
-			c.config.ID,
-			msgID,
+			"NOMBRE=%v,APELLIDO=%v,DOCUMENTO=%v,NACIMIENTO=%v,NUMERO=%v,CLIENT_ID=%v,Message N°%v\n",
+			c.config.Data.Nombre,
+			c.config.Data.Apellido,
+			c.config.Data.Documento,
+			c.config.Data.Nacimiento,
+			c.config.Data.Numero,
 		)
+
+		// Idea: sumarle un checksum para verificar validez de los datos
+		// dataStr := fmt.Sprintf(
+        //     "NOMBRE=%v,APELLIDO=%v,DOCUMENTO=%v,NACIMIENTO=%v,NUMERO=%v,CLIENT_ID=%v,Message N°%v",
+        //     c.config.Data.Nombre,
+        //     c.config.Data.Apellido,
+        //     c.config.Data.Documento,
+        //     c.config.Data.Nacimiento,
+        //     c.config.Data.Numero,
+        //     c.config.ID,
+        //     msgID,
+        // )
+
+        // // Calcular checksum
+        // hash := md5.Sum([]byte(dataStr))
+        // checksum := hex.EncodeToString(hash[:])
+
+        // // Enviar datos + checksum
+        // fmt.Fprintf(c.conn, "%s|CHECKSUM=%s\n", dataStr, checksum)
+
+
 		msg, err := bufio.NewReader(c.conn).ReadString('\n')
 		c.conn.Close()
 

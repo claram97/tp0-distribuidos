@@ -11,12 +11,22 @@ import (
 
 var log = logging.MustGetLogger("log")
 
+// Bet data to be send to the server
+type BetData struct {
+    Nombre     string
+    Apellido   string
+    Documento  string
+    Nacimiento string
+    Numero     string
+}
+
 // ClientConfig Configuration used by the client
 type ClientConfig struct {
-	ID            string
-	ServerAddress string
-	LoopAmount    int
-	LoopPeriod    time.Duration
+    ID            string
+    ServerAddress string
+    LoopAmount    int
+    LoopPeriod    time.Duration
+    Data         BetData
 }
 
 // Client Entity that encapsulates how

@@ -40,6 +40,11 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("loop", "period")
 	v.BindEnv("loop", "amount")
 	v.BindEnv("log", "level")
+	v.BindEnv("nombre")
+	v.BindEnv("apellido")
+	v.BindEnv("documento")
+	v.BindEnv("nacimiento")
+	v.BindEnv("numero")
 
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but configuration
@@ -51,10 +56,19 @@ func InitConfig() (*viper.Viper, error) {
 	}
 
 	// Parse time.Duration variables and return an error if those variables cannot be parsed
-
 	if _, err := time.ParseDuration(v.GetString("loop.period")); err != nil {
 		return nil, errors.Wrapf(err, "Could not parse CLI_LOOP_PERIOD env var as time.Duration.")
 	}
+
+	// If any of the variables for the bet is not present, we must fail
+	requiredVars := []string{"nombre", "apellido", "documento", "nacimiento", "numero"}
+	for _, key := range requiredVars {
+		if v.GetString(key) == "" {
+			return nil, fmt.Errorf("Missing required env var: CLI_%s", strings.ToUpper(key))
+		}
+	}
+
+	// TO-DO: add validation for correct values (for example, 'documento' has 8 numbers)
 
 	return v, nil
 }
@@ -110,11 +124,20 @@ func main() {
 
 		PrintConfig(v)
 
+		betData := common.BetData{
+			Nombre:     v.GetString("nombre"),
+			Apellido:   v.GetString("apellido"),
+			Documento:  v.GetString("documento"),
+			Nacimiento: v.GetString("nacimiento"),
+			Numero:     v.GetString("numero"),
+		}
+
 		clientConfig := common.ClientConfig{
 			ServerAddress: v.GetString("server.address"),
 			ID:            v.GetString("id"),
 			LoopAmount:    v.GetInt("loop.amount"),
 			LoopPeriod:    v.GetDuration("loop.period"),
+			Data: betData,
 		}
 
 		client = common.NewClient(clientConfig)

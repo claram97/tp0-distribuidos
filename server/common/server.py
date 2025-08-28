@@ -120,7 +120,7 @@ class Server:
             status, info, data = decode_message(msg)
 
             addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg.split('|')}')
+            logging.info(f'action: receive_message | result: success | ip: {addr[0]}')
 
             if status == "success":
                 store_bets([Bet(

@@ -49,7 +49,7 @@ class Server:
 
             if status == "success":
                 store_bets([Bet(
-                    agency=1,
+                    agency=int(data["client_id"]),
                     first_name=data["nombre"],
                     last_name=data["apellido"],
                     document=data["documento"],

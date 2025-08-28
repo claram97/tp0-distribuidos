@@ -2,8 +2,8 @@ import socket
 import logging
 
 from common.utils import Bet, store_bets
-from common.communication import read_message
-from common.communicationUtils import decode_message
+from common.communication import read_message, send_message
+from common.communicationUtils import decode_message, encode_message
 
 
 class Server:
@@ -58,17 +58,8 @@ class Server:
                 )])
 
             logging.info(f'action: apuesta_almacenada | result: success | dni: {data["documento"]} | numero: {data["numero"]}.')
-            response_body = f"STATUS={status}|INFO={info}|END\n"
-            response = f"LEN={len(response_body)}|{response_body}"
-
-            response_bytes = response.encode('utf-8')
-            total_sent = 0
-            while total_sent < len(response_bytes):
-                sent = client_sock.send(response_bytes[total_sent:])
-                if sent == 0:
-                    raise RuntimeError("Socket connection broken")
-                total_sent += sent
-
+            response_bytes = encode_message(status, info)
+            send_message(client_sock, response_bytes)
             self._client_connections.append(client_sock)
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")

@@ -56,3 +56,9 @@ def decode_message(message):
 
     except Exception:
         return "failed", "el mensaje recibido no tiene el formato esperado", None
+    
+def encode_message(status, info):
+    response_body = f"STATUS={status}|INFO={info}|END\n"
+    response = f"LEN={len(response_body)}|{response_body}"
+
+    return response.encode('utf-8')

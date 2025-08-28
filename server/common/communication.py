@@ -18,3 +18,11 @@ def read_message(client_sock):
             return None, RuntimeError(f"decode_error: {e}")
     except OSError as e:
             return None, RuntimeError(f"recv_error: {e}")
+
+def send_message(client_sock, response_bytes):
+    total_sent = 0
+    while total_sent < len(response_bytes):
+        sent = client_sock.send(response_bytes[total_sent:])
+        if sent == 0:
+            raise RuntimeError("Socket connection broken")
+        total_sent += sent

@@ -49,8 +49,6 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-// ---- funciones auxiliares ----
-
 func (c *Client) StartClientLoop(ctx context.Context) {
 	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
 		select {

@@ -1,3 +1,6 @@
+import logging
+
+
 def read_message(client_sock):
     buffer = b""
     try:
@@ -26,3 +29,16 @@ def send_message(client_sock, response_bytes):
         if sent == 0:
             raise RuntimeError("Socket connection broken")
         total_sent += sent
+
+def accept_new_connection(server_socket):
+    """
+    Accept new connections
+
+    Function blocks until a connection to a client is made.
+    Then connection created is printed and returned
+    """
+
+    logging.info('action: accept_connections | result: in_progress')
+    c, addr = server_socket.accept()
+    logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
+    return c

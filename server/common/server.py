@@ -2,7 +2,7 @@ import socket
 import logging
 
 from common.utils import Bet, store_bets
-from common.communication import read_message, send_message
+from common.communication import accept_new_connection, read_message, send_message
 from common.communicationUtils import decode_message, encode_message
 
 
@@ -26,7 +26,7 @@ class Server:
         # TODO: Modify this program to handle signal to graceful shutdown
         # the server
         while True:
-            client_sock = self.__accept_new_connection()
+            client_sock = accept_new_connection(self._server_socket)
             self.__handle_client_connection(client_sock)
         
     def __handle_client_connection(self, client_sock):
@@ -67,20 +67,6 @@ class Server:
             if client_sock in self._client_connections:
                 self._client_connections.remove(client_sock)
             client_sock.close()
-
-    def __accept_new_connection(self):
-        """
-        Accept new connections
-
-        Function blocks until a connection to a client is made.
-        Then connection created is printed and returned
-        """
-
-        # Connection arrived
-        logging.info('action: accept_connections | result: in_progress')
-        c, addr = self._server_socket.accept()
-        logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
-        return c
 
     def stop(self):
         self._server_socket.close()

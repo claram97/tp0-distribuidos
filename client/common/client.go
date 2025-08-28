@@ -126,7 +126,6 @@ func (c *Client) parseResponse(response string) error {
 		log.Errorf("action: server_response | result: failed | client_id: %v | info: %v", c.config.ID, info)
 	}
 
-	log.Infof("action: receive_message | result: success | client_id: %v | msg: %v", c.config.ID, response)
 	return nil
 }
 

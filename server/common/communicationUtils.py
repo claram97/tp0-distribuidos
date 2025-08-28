@@ -21,7 +21,7 @@ def is_valid_len(len_str, message):
     return int(len_str) == received_len
 
 
-def decode_message(self, message):
+def decode_message(message):
     splitted_msg = message.split('|')
 
     try:

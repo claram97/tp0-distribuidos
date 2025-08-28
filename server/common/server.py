@@ -2,6 +2,8 @@ import socket
 import logging
 
 from common.utils import Bet, store_bets
+from common.communication import read_message
+from common.communicationUtils import decode_message
 
 
 class Server:
@@ -110,16 +112,15 @@ class Server:
         client socket will also be closed
         """
         try:
-            msg, err = self.__read_message(client_sock)
+            msg, err = read_message(client_sock)
             if err is not None:
                 logging.error(f"action: receive_message | result: fail | error: {err}")
                 return
 
-            splitted_msg = msg.split('|')
-            status, info, data = self.__decode_message(splitted_msg)
+            status, info, data = decode_message(msg)
 
             addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {splitted_msg}')
+            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
 
             if status == "success":
                 store_bets([Bet(

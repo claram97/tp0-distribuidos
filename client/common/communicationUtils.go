@@ -6,6 +6,20 @@ import (
 	"strconv"
 )
 
+func ParsedMessage(data BetData, clientID string, msgID int) string {
+	dataStr := fmt.Sprintf(
+		"NOMBRE=%v|APELLIDO=%v|DOCUMENTO=%v|NACIMIENTO=%v|NUMERO=%v|CLIENT_ID=%v|Message N°=%v|END",
+		data.Nombre,
+		data.Apellido,
+		data.Documento,
+		data.Nacimiento,
+		data.Numero,
+		clientID,
+		msgID,
+	)
+	return fmt.Sprintf("LEN=%d|%s\n", len(dataStr), dataStr)
+}
+
 func ParseResponse(response string) (string, string, error) {
     parts := strings.Split(response, "|")
     if len(parts) < 4 {

@@ -1,8 +1,6 @@
 package common
 
 import (
-	"bufio"
-	"fmt"
 	"net"
 	"time"
 	"context"
@@ -51,48 +49,6 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-//
-func parsedMessage(data BetData, clientID string, msgID int) string {
-	dataStr := fmt.Sprintf(
-		"NOMBRE=%v|APELLIDO=%v|DOCUMENTO=%v|NACIMIENTO=%v|NUMERO=%v|CLIENT_ID=%v|Message N°=%v|END",
-		data.Nombre,
-		data.Apellido,
-		data.Documento,
-		data.Nacimiento,
-		data.Numero,
-		clientID,
-		msgID,
-	)
-	return fmt.Sprintf("LEN=%d|%s\n", len(dataStr), dataStr)
-}
-
-func (c *Client) sendMessage(message string) error {
-    msgBytes := []byte(message)
-    totalWritten := 0
-    for totalWritten < len(msgBytes) {
-        n, err := c.conn.Write(msgBytes[totalWritten:])
-        if err != nil {
-            log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
-            c.conn.Close()
-            c.conn = nil
-            return err
-        }
-        totalWritten += n
-    }
-    return nil
-}
-
-func (c *Client) receiveMessage() (string, error) {
-    msg, err := bufio.NewReader(c.conn).ReadString('\n')
-    c.conn.Close()
-    c.conn = nil
-    if err != nil {
-        log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
-        return "", err
-    }
-    return msg, nil
-}
-
 // ---- funciones auxiliares ----
 
 func (c *Client) StartClientLoop(ctx context.Context) {
@@ -106,12 +62,13 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 				return
 			}
 
-			message := parsedMessage(c.config.Data, c.config.ID, msgID)
-			if err := c.sendMessage(message); err != nil {
+			message := ParsedMessage(c.config.Data, c.config.ID, msgID)
+			if err := SendMessage(c.conn, message, c.config.ID); err != nil {
+				c.conn = nil
 				return
 			}
 
-			response, err := c.receiveMessage()
+			response, err := ReceiveMessage(c.conn, c.config.ID)
 			if err != nil {
 				return
 			}

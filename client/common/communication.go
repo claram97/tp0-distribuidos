@@ -30,3 +30,16 @@ func ReceiveMessage(conn net.Conn, clientID string) (string, error) {
     }
     return msg, nil
 }
+
+func CreateClientSocket(serverAddress string, clientID string) (net.Conn, error) {
+    conn, err := net.Dial("tcp", serverAddress)
+    if err != nil {
+        log.Criticalf(
+            "action: connect | result: fail | client_id: %v | error: %v",
+            clientID,
+            err,
+        )
+        return nil, err
+    }
+    return conn, nil
+}

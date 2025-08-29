@@ -2,7 +2,7 @@ import socket
 import logging
 
 from common.utils import Bet, store_bets
-from common.communication import accept_new_connection, read_message, send_message
+from common.communication import Communication, accept_new_connection, send_message
 from common.communicationUtils import decode_message, encode_message
 
 
@@ -31,49 +31,44 @@ class Server:
 
     def __handle_client_connection_debug(self, client_sock):
         """
-        Lee un único batch, cuenta cuántas apuestas contiene y lo loguea.
-        Responde con 'success' y cierra la conexión.
+        Mantiene la conexión abierta para leer continuamente batches.
         """
+        # 1. Creamos una instancia del lector para este cliente específico.
+        reader = Communication(client_sock)
+        
         try:
-            msg, err = read_message(client_sock)
-            if err is not None:
-                logging.error(f"action: receive_batch | result: fail | error: {err}")
-                return
+            # 2. Bucle principal para leer continuamente.
+            while True:
+                # 3. Usamos el método de la clase para obtener un mensaje completo.
+                msg, err = reader.read_message()
 
-            if not msg:
-                logging.warning("action: receive_batch | result: fail | error: empty message")
-                return
+                if err is not None:
+                    logging.error(f"action: receive_batch | result: fail | error: {err}")
+                    break
 
+                # Si msg es None y no hay error, significa que el cliente cerró la conexión limpiamente.
+                if msg is None:
+                    logging.info("action: client_disconnected | result: success")
+                    break
 
-            try:
-                start_index = msg.index('|') + 1
-            except ValueError:
-                logging.error("action: parse_batch | result: fail | error: missing header separator '|'")
-                return
+                # --- Tu lógica de procesamiento sigue exactamente igual ---
+                try:
+                    start_index = msg.index('|') + 1
+                    end_index = msg.rindex('|END_BATCH')
+                    bets_body = msg[start_index:end_index]
+                    individual_bets = bets_body.split(':')
+                    non_empty_bets = [bet for bet in individual_bets if bet]
+                    bet_count = len(non_empty_bets)
+                    
+                    logging.info(f"action: batch_processed | result: success | bets_received: {bet_count}")
 
-            try:
-                end_index = msg.rindex('|END_BATCH')
-            except ValueError:
-                logging.error("action: parse_batch | result: fail | error: missing footer '|END_BATCH'")
-                return
-                
-            bets_body = msg[start_index:end_index]
+                except ValueError as e:
+                    logging.error(f"action: parse_batch | result: fail | error: {e}")
+                    continue
+                except OSError as e:
+                    logging.error(f"action: handle_batch | result: fail | error: {e}")
+                    break
 
-            individual_bets = bets_body.split(':')
-
-            non_empty_bets = [bet for bet in individual_bets if bet]
-            
-            bet_count = len(non_empty_bets)
-            logging.info(f"action: batch_processed | result: success | bets_received: {bet_count}")
-
-
-            # logging.info(f"action: receive_message_debug | message: {msg.strip()}")
-
-            response = "action: batch_received | result: success\n"
-            client_sock.sendall(response.encode())
-
-        except OSError as e:
-            logging.error(f"action: handle_connection | result: fail | error: {e}")
         finally:
             client_sock.close()
             logging.info("action: connection_closed | result: success")
@@ -85,8 +80,10 @@ class Server:
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
+        reader = Communication(client_sock)
+        
         try:
-            msg, err = read_message(client_sock)
+            msg, err = reader.read_message()
             if err is not None:
                 logging.error(f"action: receive_message | result: fail | error: {err}")
                 return

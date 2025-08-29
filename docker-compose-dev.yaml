@@ -17,8 +17,6 @@ services:
     entrypoint: /client
     environment:
       - CLI_ID=1
-    env_file:
-      - client.env
     networks:
       - testing_net
     volumes:

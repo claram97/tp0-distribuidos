@@ -40,6 +40,13 @@ func NewClient(config ClientConfig) *Client {
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
+	conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
+	if err != nil {
+		log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
+	}
+	defer conn.Close()
+
 	scanner := bufio.NewScanner(agencyFile)
 	messages := make([]string, 0, 100)
 	batchSize := 0
@@ -62,26 +69,14 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 		}
 
 		betData := BetData{
-			Nombre:     data[0],
-			Apellido:   data[1],
-			Documento:  data[2],
-			Nacimiento: data[3],
-			Numero:     data[4],
+			Nombre: data[0], Apellido: data[1], Documento: data[2],
+			Nacimiento: data[3], Numero: data[4],
 		}
-
 		msg := ParsedMessage(betData, c.config.ID, msgID) + ":"
 		msgBytes := len([]byte(msg))
 		tentativeSize := batchSize + msgBytes + len([]byte(footer))
 
 		if tentativeSize >= 8192 || len(messages) == c.config.BatchMaxAmount {
-			log.Infof("Batch ready. Preparing to send %d lines.", len(messages))
-
-			conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
-			if err != nil {
-				log.Errorf("action: create_conn_for_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				return
-			}
-
 			batchContent := strings.Join(messages, "")
 			batchToSend := "BATCH_LEN=0|" + batchContent + footer
 			totalLen := len([]byte(batchToSend))
@@ -90,12 +85,9 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 			log.Infof("Sending batch (size %d bytes, lines %d)", totalLen, len(messages))
 			if err := SendMessage(conn, batchToSend, c.config.ID); err != nil {
 				log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				conn.Close()
 				return
 			}
-
-			conn.Close()
-			log.Infof("action: batch_sent_and_conn_closed | result: success | client_id: %v", c.config.ID)
+			log.Infof("action: batch_sent | result: success | client_id: %v", c.config.ID)
 
 			messages = messages[:0]
 			batchSize = 0
@@ -107,14 +99,6 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 	}
 
 	if len(messages) > 0 {
-		log.Infof("Preparing to send final batch of %d lines.", len(messages))
-
-		conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
-		if err != nil {
-			log.Errorf("action: create_conn_for_final_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			return
-		}
-
 		batchContent := strings.Join(messages, "")
 		batchToSend := "BATCH_LEN=0|" + batchContent + footer
 		totalLen := len([]byte(batchToSend))
@@ -123,12 +107,9 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 		log.Infof("Sending final batch (size %d bytes, lines %d)", totalLen, len(messages))
 		if err := SendMessage(conn, batchToSend, c.config.ID); err != nil {
 			log.Errorf("action: send_final_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			conn.Close()
 			return
 		}
-
-		conn.Close()
-		log.Infof("action: final_batch_sent_and_conn_closed | result: success | client_id: %v", c.config.ID)
+		log.Infof("action: final_batch_sent | result: success | client_id: %v", c.config.ID)
 	}
 
 	if err := scanner.Err(); err != nil {

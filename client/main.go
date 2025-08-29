@@ -1,15 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"strings"
-	"time"
 	"os/signal"
+	"strings"
 	"syscall"
-	"context"
-   	"unicode"
-
+	"time"
+	"unicode"
 
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
@@ -21,38 +20,12 @@ import (
 var log = logging.MustGetLogger("log")
 
 func isAlpha(s string) bool {
-    for _, r := range s {
-        if !unicode.IsLetter(r) && r != ' ' {
-            return false
-        }
-    }
-    return true
-}
-
-func validateParameters(v *viper.Viper) error {
-	nombre := v.GetString("nombre")
-	apellido := v.GetString("apellido")
-	documento := v.GetString("documento")
-	nacimiento := v.GetString("nacimiento")
-	numero := v.GetString("numero")
-
-	if nombre == "" || apellido == "" || documento == "" || nacimiento == "" || numero == "" {
-		return fmt.Errorf("missing_parameters")
+	for _, r := range s {
+		if !unicode.IsLetter(r) && r != ' ' {
+			return false
+		}
 	}
-
-	if !isAlpha(nombre) {
-		return fmt.Errorf("nombre must be alphabetic")
-	}
-
-	if !isAlpha(apellido) {
-		return fmt.Errorf("apellido must be alphabetic")
-	}
-
-	if len(documento) != 8 {
-		return fmt.Errorf("documento must be 8 digits")
-	}
-
-	return nil
+	return true
 }
 
 // InitConfig Function that uses viper library to parse configuration parameters.
@@ -74,14 +47,10 @@ func InitConfig() (*viper.Viper, error) {
 	// Add env variables supported
 	v.BindEnv("id")
 	v.BindEnv("server", "address")
+	v.BindEnv("batch", "maxAmount")
 	v.BindEnv("loop", "period")
 	v.BindEnv("loop", "amount")
 	v.BindEnv("log", "level")
-	v.BindEnv("nombre")
-	v.BindEnv("apellido")
-	v.BindEnv("documento")
-	v.BindEnv("nacimiento")
-	v.BindEnv("numero")
 
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but configuration
@@ -97,19 +66,26 @@ func InitConfig() (*viper.Viper, error) {
 		return nil, errors.Wrapf(err, "Could not parse CLI_LOOP_PERIOD env var as time.Duration.")
 	}
 
-	// If any of the variables for the bet is not present, we must fail
-	requiredVars := []string{"nombre", "apellido", "documento", "nacimiento", "numero"}
-	for _, key := range requiredVars {
-		if v.GetString(key) == "" {
-			return nil, fmt.Errorf("Missing required env var: CLI_%s", strings.ToUpper(key))
-		}
+	// Validate that batch max amount is positive
+	if v.GetInt("batch.maxAmount") <= 0 {
+		return nil, errors.New("CLI_BATCH_MAXAMOUNT env var must be a positive integer.")
 	}
 
-	// TO-DO: add validation for correct values (for example, 'documento' has 8 numbers)
-	resultOfValidation := validateParameters(v)
-	if resultOfValidation != nil {
-		return nil, resultOfValidation
+	// Validate that loop amount is positive
+	if v.GetInt("loop.amount") <= 0 {
+		return nil, errors.New("CLI_LOOP_AMOUNT env var must be a positive integer.")
 	}
+
+	// Validate that ID is not empty
+	if v.GetString("id") == "" {
+		return nil, errors.New("CLI_ID env var must be set and non empty.")
+	}
+
+	// Validate that server address is not empty
+	if v.GetString("server.address") == "" {
+		return nil, errors.New("CLI_SERVER_ADDRESS env var must be set and non empty.")
+	}
+
 	return v, nil
 }
 
@@ -138,79 +114,69 @@ func InitLogger(logLevel string) error {
 // PrintConfig Print all the configuration parameters of the program.
 // For debugging purposes only
 func PrintConfig(v *viper.Viper) {
-	   log.Infof(
-        "action: config | result: success | client_id: %s | server_address: %s | loop_amount: %v | loop_period: %v | log_level: %s | nombre: %s | apellido: %s | documento: %s | nacimiento: %s | numero: %s",
-        v.GetString("id"),
-        v.GetString("server.address"),
-        v.GetInt("loop.amount"),
-        v.GetDuration("loop.period"),
-        v.GetString("log.level"),
-        v.GetString("nombre"),
-        v.GetString("apellido"),
-        v.GetString("documento"),
-        v.GetString("nacimiento"),
-        v.GetString("numero"),
-    )
+	log.Infof(
+		"action: config | result: success | client_id: %s | server_address: %s | batch_max_amount : %v | loop_amount: %v | loop_period: %v | log_level: %s",
+		v.GetString("id"),
+		v.GetString("server.address"),
+		v.GetInt("batch.maxAmount"),
+		v.GetInt("loop.amount"),
+		v.GetDuration("loop.period"),
+		v.GetString("log.level"),
+	)
 }
 
 func getClientConfig(v *viper.Viper) common.ClientConfig {
-	betData := common.BetData{
-		Nombre:     v.GetString("nombre"),
-		Apellido:   v.GetString("apellido"),
-		Documento:  v.GetString("documento"),
-		Nacimiento: v.GetString("nacimiento"),
-		Numero:     v.GetString("numero"),
-	}
 
 	return common.ClientConfig{
-		ServerAddress: v.GetString("server.address"),
-		ID:            v.GetString("id"),
-		LoopAmount:    v.GetInt("loop.amount"),
-		LoopPeriod:    v.GetDuration("loop.period"),
-		Data:          betData,
+		ServerAddress:  v.GetString("server.address"),
+		ID:             v.GetString("id"),
+		LoopAmount:     v.GetInt("loop.amount"),
+		LoopPeriod:     v.GetDuration("loop.period"),
+		BatchMaxAmount: v.GetInt("batch.maxAmount"),
 	}
 }
 
 func main() {
-    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-    defer stop()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	defer stop()
 
-    v, err := InitConfig()
-    if err != nil {
-        log.Criticalf("%s", err)
-        os.Exit(1)
-    }
+	v, err := InitConfig()
+	if err != nil {
+		log.Criticalf("%s", err)
+		os.Exit(1)
+	}
 
-    if err := InitLogger(v.GetString("log.level")); err != nil {
-        log.Criticalf("%s", err)
-        os.Exit(1)
-    }
+	if err := InitLogger(v.GetString("log.level")); err != nil {
+		log.Criticalf("%s", err)
+		os.Exit(1)
+	}
 
-    PrintConfig(v)
+	PrintConfig(v)
 
-    clientConfig := getClientConfig(v)
-    client := common.NewClient(clientConfig)
+	time.Sleep(10 * time.Second)
+	clientConfig := getClientConfig(v)
+	client := common.NewClient(clientConfig)
 
-    fileName := fmt.Sprintf("../data/agency-%s.csv", clientConfig.ID)
-    file, err := os.Open(fileName)
-    if err != nil {
-        log.Errorf("action: file_open | result: fail | client_id: %s | error: %v", clientConfig.ID, err)
-        os.Exit(1)
-    }
+	fileName := fmt.Sprintf("../data/agency-%s.csv", clientConfig.ID)
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Errorf("action: file_open | result: fail | client_id: %s | error: %v", clientConfig.ID, err)
+		os.Exit(1)
+	}
 
-    done := make(chan struct{})
-    go func() {
-        client.StartClientLoop(ctx, file)
-        close(done)
-    }()
+	done := make(chan struct{})
+	go func() {
+		client.StartClientLoop(ctx, file)
+		close(done)
+	}()
 
-    select {
-    case <-done:
-        log.Infof("action: client_finished | result: success | client_id: %s", clientConfig.ID)
-    case <-ctx.Done():
-        log.Infof("action: sigterm_received | result: exiting | client_id: %s", clientConfig.ID)
-    }
+	select {
+	case <-done:
+		log.Infof("action: client_finished | result: success | client_id: %s", clientConfig.ID)
+	case <-ctx.Done():
+		log.Infof("action: sigterm_received | result: exiting | client_id: %s", clientConfig.ID)
+	}
 
 	file.Close()
-    client.Close()
+	client.Close()
 }

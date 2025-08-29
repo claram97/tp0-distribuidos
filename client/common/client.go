@@ -23,11 +23,11 @@ type BetData struct {
 }
 
 type ClientConfig struct {
-	ID            string
-	ServerAddress string
-	LoopAmount    int
-	LoopPeriod    time.Duration
-	Data          BetData
+	ID             string
+	ServerAddress  string
+	LoopAmount     int
+	LoopPeriod     time.Duration
+	BatchMaxAmount int
 }
 
 type Client struct {
@@ -73,7 +73,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 		msgBytes := len([]byte(msg))
 		tentativeSize := batchSize + msgBytes + len([]byte(footer))
 
-		if tentativeSize >= 8192 || len(messages) == 10 {
+		if tentativeSize >= 8192 || len(messages) == c.config.BatchMaxAmount {
 			log.Infof("Batch ready. Preparing to send %d lines.", len(messages))
 
 			conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
@@ -138,33 +138,33 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 	log.Infof("action: all_batches_sent | result: success | client_id: %v", c.config.ID)
 }
 
-func (c *Client) handleMessage(msgID int) error {
-	message := ParsedMessage(c.config.Data, c.config.ID, msgID)
-	if err := SendMessage(c.conn, message, c.config.ID); err != nil {
-		return fmt.Errorf("send_message: %w", err)
-	}
+// func (c *Client) handleMessage(msgID int) error {
+// 	message := ParsedMessage(c.config.Data, c.config.ID, msgID)
+// 	if err := SendMessage(c.conn, message, c.config.ID); err != nil {
+// 		return fmt.Errorf("send_message: %w", err)
+// 	}
 
-	response, err := ReceiveMessage(c.conn, c.config.ID)
-	if err != nil {
-		return fmt.Errorf("receive_message: %w", err)
-	}
+// 	response, err := ReceiveMessage(c.conn, c.config.ID)
+// 	if err != nil {
+// 		return fmt.Errorf("receive_message: %w", err)
+// 	}
 
-	log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %s",
-		c.config.Data.Documento, c.config.Data.Numero)
+// 	log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %s",
+// 		c.config.Data.Documento, c.config.Data.Numero)
 
-	status, info, err := ParseResponse(response)
-	if err != nil {
-		log.Errorf("action: parse_response | result: failed | client_id: %v | error: %v", c.config.ID, err)
-		return err
-	}
+// 	status, info, err := ParseResponse(response)
+// 	if err != nil {
+// 		log.Errorf("action: parse_response | result: failed | client_id: %v | error: %v", c.config.ID, err)
+// 		return err
+// 	}
 
-	if status == "success" {
-		log.Infof("action: server_response | result: success | client_id: %v | info: %v", c.config.ID, info)
-	} else {
-		log.Errorf("action: server_response | result: failed | client_id: %v | info: %v", c.config.ID, info)
-	}
-	return nil
-}
+// 	if status == "success" {
+// 		log.Infof("action: server_response | result: success | client_id: %v | info: %v", c.config.ID, info)
+// 	} else {
+// 		log.Errorf("action: server_response | result: failed | client_id: %v | info: %v", c.config.ID, info)
+// 	}
+// 	return nil
+// }
 
 func (c *Client) Close() {
 	if c.conn != nil {

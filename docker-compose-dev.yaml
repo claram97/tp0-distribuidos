@@ -23,6 +23,7 @@ services:
       - testing_net
     volumes:
       - ./client/config.yaml:/config.yaml:rw
+      - ./.data:/data:rw
     depends_on:
       - server
 

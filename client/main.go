@@ -153,6 +153,24 @@ func PrintConfig(v *viper.Viper) {
     )
 }
 
+func getClientConfig(v *viper.Viper) common.ClientConfig {
+	betData := common.BetData{
+		Nombre:     v.GetString("nombre"),
+		Apellido:   v.GetString("apellido"),
+		Documento:  v.GetString("documento"),
+		Nacimiento: v.GetString("nacimiento"),
+		Numero:     v.GetString("numero"),
+	}
+
+	return common.ClientConfig{
+		ServerAddress: v.GetString("server.address"),
+		ID:            v.GetString("id"),
+		LoopAmount:    v.GetInt("loop.amount"),
+		LoopPeriod:    v.GetDuration("loop.period"),
+		Data:          betData,
+	}
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
@@ -170,22 +188,7 @@ func main() {
 
 	PrintConfig(v)
 
-	betData := common.BetData{
-		Nombre:     v.GetString("nombre"),
-		Apellido:   v.GetString("apellido"),
-		Documento:  v.GetString("documento"),
-		Nacimiento: v.GetString("nacimiento"),
-		Numero:     v.GetString("numero"),
-	}
-
-	clientConfig := common.ClientConfig{
-		ServerAddress: v.GetString("server.address"),
-		ID:            v.GetString("id"),
-		LoopAmount:    v.GetInt("loop.amount"),
-		LoopPeriod:    v.GetDuration("loop.period"),
-		Data:          betData,
-	}
-
+	clientConfig := getClientConfig(v)
 	client := common.NewClient(clientConfig)
 
 	done := make(chan struct{})

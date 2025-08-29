@@ -31,25 +31,50 @@ class Server:
 
     def __handle_client_connection_debug(self, client_sock):
         """
-        Lee UN SOLO batch y cierra la conexión.
+        Lee un único batch, cuenta cuántas apuestas contiene y lo loguea.
+        Responde con 'success' y cierra la conexión.
         """
         try:
-            # Quitamos el 'while True:'
             msg, err = read_message(client_sock)
             if err is not None:
-                # Este error ahora solo ocurrirá si la conexión falla durante la primera lectura
-                logging.error(f"action: receive_message | result: fail | error: {err}")
+                logging.error(f"action: receive_batch | result: fail | error: {err}")
                 return
 
-            if msg:
-                logging.info(f"action: receive_message_debug | message: {msg.strip()}")
-                response = "action: apuesta_recibida | result: success\n"
-                client_sock.sendall(response.encode())
+            if not msg:
+                logging.warning("action: receive_batch | result: fail | error: empty message")
+                return
+
+
+            try:
+                start_index = msg.index('|') + 1
+            except ValueError:
+                logging.error("action: parse_batch | result: fail | error: missing header separator '|'")
+                return
+
+            try:
+                end_index = msg.rindex('|END_BATCH')
+            except ValueError:
+                logging.error("action: parse_batch | result: fail | error: missing footer '|END_BATCH'")
+                return
+                
+            bets_body = msg[start_index:end_index]
+
+            individual_bets = bets_body.split(':')
+
+            non_empty_bets = [bet for bet in individual_bets if bet]
+            
+            bet_count = len(non_empty_bets)
+            logging.info(f"action: batch_processed | result: success | bets_received: {bet_count}")
+
+
+            # logging.info(f"action: receive_message_debug | message: {msg.strip()}")
+
+            response = "action: batch_received | result: success\n"
+            client_sock.sendall(response.encode())
 
         except OSError as e:
-            logging.error(f"action: receive_message | result: fail | error: {e}")
+            logging.error(f"action: handle_connection | result: fail | error: {e}")
         finally:
-            # El finally se ejecuta después de procesar el único batch, cerrando la conexión.
             client_sock.close()
             logging.info("action: connection_closed | result: success")
 

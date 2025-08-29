@@ -40,11 +40,9 @@ def write_file(file_name, clients):
             "environment": [
                 f"CLI_ID={i}",
             ],
-            "env_file": [
-                "client.env",
-            ],
             "volumes": [
-                "./client/config.yaml:/config.yaml:rw"
+                "./client/config.yaml:/config.yaml:rw",
+                "./client/data:/data:rw"
             ],
             "networks": ["testing_net"],
             "depends_on": ["server"]

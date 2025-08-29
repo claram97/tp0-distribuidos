@@ -31,27 +31,32 @@ class Server:
 
     def __handle_client_connection_debug(self, client_sock):
         """
-        Mantiene la conexión abierta para leer continuamente batches.
+        Mantiene la conexión para un diálogo de pregunta-respuesta con el cliente.
         """
-        # 1. Creamos una instancia del lector para este cliente específico.
         reader = Communication(client_sock)
         
         try:
-            # 2. Bucle principal para leer continuamente.
             while True:
-                # 3. Usamos el método de la clase para obtener un mensaje completo.
                 msg, err = reader.read_message()
 
                 if err is not None:
-                    logging.error(f"action: receive_batch | result: fail | error: {err}")
+                    logging.error(f"action: receive_message | result: fail | error: {err}")
                     break
 
-                # Si msg es None y no hay error, significa que el cliente cerró la conexión limpiamente.
                 if msg is None:
-                    logging.info("action: client_disconnected | result: success")
+                    logging.info("action: client_disconnected_unexpectedly | result: success")
                     break
+                
+                # --- NUEVA LÓGICA: Manejar el mensaje de finalización ---
+                if msg == "FIN":
+                    logging.info("action: receive_fin | result: success")
+                    # El cliente terminó, le enviamos la confirmación final y cerramos.
+                    response = "ACK_FIN\n"
+                    client_sock.sendall(response.encode())
+                    logging.info("action: send_ack_fin | result: success")
+                    break # Salimos del bucle para cerrar la conexión.
 
-                # --- Tu lógica de procesamiento sigue exactamente igual ---
+                # --- LÓGICA EXISTENTE CON UN AÑADIDO ---
                 try:
                     start_index = msg.index('|') + 1
                     end_index = msg.rindex('|END_BATCH')
@@ -62,12 +67,17 @@ class Server:
                     
                     logging.info(f"action: batch_processed | result: success | bets_received: {bet_count}")
 
+                    # --- AÑADIDO: Enviar confirmación de lote (ACK_BATCH) ---
+                    response = "ACK_BATCH\n"
+                    client_sock.sendall(response.encode())
+                    logging.info(f"action: send_ack_batch | result: success | bets_received: {bet_count}")
+
                 except ValueError as e:
+                    # Si un batch está mal formado, igual hay que notificar al cliente.
+                    # Podríamos definir un mensaje de error como "NACK_BATCH\n" (Not Acknowledged)
+                    # pero por ahora, para mantenerlo simple, no respondemos en caso de error y logueamos.
                     logging.error(f"action: parse_batch | result: fail | error: {e}")
                     continue
-                except OSError as e:
-                    logging.error(f"action: handle_batch | result: fail | error: {e}")
-                    break
 
         finally:
             client_sock.close()

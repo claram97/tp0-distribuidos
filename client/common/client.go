@@ -39,6 +39,19 @@ func NewClient(config ClientConfig) *Client {
 	return &Client{config: config}
 }
 
+// ReadResponse lee una sola línea del servidor para obtener la confirmación.
+func ReadResponse(reader *bufio.Reader, clientID string) error {
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
+		return err
+	}
+
+	trimmedResponse := strings.TrimSpace(response)
+	log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
+	return nil
+}
+
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 	conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
 	if err != nil {
@@ -46,6 +59,8 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 		return
 	}
 	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
 
 	scanner := bufio.NewScanner(agencyFile)
 	messages := make([]string, 0, 100)
@@ -89,6 +104,11 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 			}
 			log.Infof("action: batch_sent | result: success | client_id: %v", c.config.ID)
 
+			// --- AÑADIDO: Esperar la confirmación del servidor ---
+			if err := ReadResponse(reader, c.config.ID); err != nil {
+				return // Si no hay respuesta, cerramos.
+			}
+
 			messages = messages[:0]
 			batchSize = 0
 		}
@@ -110,13 +130,28 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 			return
 		}
 		log.Infof("action: final_batch_sent | result: success | client_id: %v", c.config.ID)
+		if err := ReadResponse(reader, c.config.ID); err != nil {
+			return
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Errorf("action: scanner_error | result: fail | client_id: %v | error: %v", c.config.ID, err)
 	}
 
-	log.Infof("action: all_batches_sent | result: success | client_id: %v", c.config.ID)
+	log.Infof("action: sending_fin | result: in_progress | client_id: %v", c.config.ID)
+	if err := SendMessage(conn, "FIN\n", c.config.ID); err != nil {
+		log.Errorf("action: send_fin | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
+	}
+
+	// --- AÑADIDO: Esperar la confirmación final del servidor ---
+	if err := ReadResponse(reader, c.config.ID); err != nil {
+		return
+	}
+
+	log.Infof("action: all_batches_sent_and_acked | result: success | client_id: %v", c.config.ID)
+
 }
 
 // func (c *Client) handleMessage(msgID int) error {

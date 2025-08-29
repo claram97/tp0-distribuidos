@@ -172,37 +172,45 @@ func getClientConfig(v *viper.Viper) common.ClientConfig {
 }
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-	defer stop()
+    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+    defer stop()
 
-	v, err := InitConfig()
-	if err != nil {
-		log.Criticalf("%s", err)
-		os.Exit(1)
-	}
+    v, err := InitConfig()
+    if err != nil {
+        log.Criticalf("%s", err)
+        os.Exit(1)
+    }
 
-	if err := InitLogger(v.GetString("log.level")); err != nil {
-		log.Criticalf("%s", err)
-		os.Exit(1)
-	}
+    if err := InitLogger(v.GetString("log.level")); err != nil {
+        log.Criticalf("%s", err)
+        os.Exit(1)
+    }
 
-	PrintConfig(v)
+    PrintConfig(v)
 
-	clientConfig := getClientConfig(v)
-	client := common.NewClient(clientConfig)
+    clientConfig := getClientConfig(v)
+    client := common.NewClient(clientConfig)
 
-	done := make(chan struct{})
-	go func() {
-		client.StartClientLoop(ctx)
-		close(done)
-	}()
+    fileName := fmt.Sprintf("../data/agency-%s.csv", clientConfig.ID)
+    file, err := os.Open(fileName)
+    if err != nil {
+        log.Errorf("action: file_open | result: fail | client_id: %s | error: %v", clientConfig.ID, err)
+        os.Exit(1)
+    }
 
-	select {
-	case <-done:
-		log.Infof("action: client_finished | result: success | client_id: %s", clientConfig.ID)
-	case <-ctx.Done():
-		log.Infof("action: sigterm_received | result: exiting | client_id: %s", clientConfig.ID)
-	}
+    done := make(chan struct{})
+    go func() {
+        client.StartClientLoop(ctx, file)
+        close(done)
+    }()
 
-	client.Close()
+    select {
+    case <-done:
+        log.Infof("action: client_finished | result: success | client_id: %s", clientConfig.ID)
+    case <-ctx.Done():
+        log.Infof("action: sigterm_received | result: exiting | client_id: %s", clientConfig.ID)
+    }
+
+	file.Close()
+    client.Close()
 }

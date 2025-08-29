@@ -17,7 +17,7 @@ func ParsedMessage(data BetData, clientID string, msgID int) string {
 		clientID,
 		msgID,
 	)
-	return fmt.Sprintf("LEN=%d|%s\n", len(dataStr), dataStr)
+	return fmt.Sprintf("LEN=%d|%s", len(dataStr), dataStr)
 }
 
 func ParseResponse(response string) (string, string, error) {

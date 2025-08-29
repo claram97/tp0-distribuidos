@@ -1,13 +1,13 @@
 package common
 
 import (
-	"net"
-	"time"
+	"bufio"
 	"context"
 	"fmt"
-    "os"
-    "bufio"
-    "strings"
+	"net"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/op/go-logging"
 )
@@ -40,121 +40,142 @@ func NewClient(config ClientConfig) *Client {
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
-    conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
-    if err != nil {
-        log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
-        return
-    }
-    defer func() {
-        conn.Close()
-        log.Infof("action: client_conn_closed | result: success | client_id: %v", c.config.ID)
-    }()
-    c.conn = conn
+	scanner := bufio.NewScanner(agencyFile)
+	messages := make([]string, 0, 100)
+	batchSize := 0
+	lines := 0
+	footer := "|END_BATCH\n"
+	msgID := 1
 
-    scanner := bufio.NewScanner(agencyFile)
-    messages := make([]string, 0, 100)
-    batchSize := 0
-    lines := 0
-    footer := "|END_BATCH\n"
-    msgID := 1
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			log.Infof("action: exit | result: sigterm | client_id: %v", c.config.ID)
+			return
+		default:
+		}
 
-    for scanner.Scan() {
-        select {
-        case <-ctx.Done():
-            log.Infof("action: exit | result: sigterm | client_id: %v", c.config.ID)
-            return
-        default:
-        }
+		line := scanner.Text()
+		data := strings.Split(line, ",")
+		if len(data) != 5 {
+			log.Errorf("action: parse_line | result: fail | line: %s", line)
+			continue
+		}
 
-        line := scanner.Text()
-        data := strings.Split(line, ",")
-        if len(data) != 5 {
-            log.Errorf("action: parse_line | result: fail | line: %s | error", line)
-            continue
-        }
+		betData := BetData{
+			Nombre:     data[0],
+			Apellido:   data[1],
+			Documento:  data[2],
+			Nacimiento: data[3],
+			Numero:     data[4],
+		}
 
-        betData := BetData{
-            Nombre:     data[0],
-            Apellido:   data[1],
-            Documento:  data[2],
-            Nacimiento: data[3],
-            Numero:     data[4],
-        }
+		msg := ParsedMessage(betData, c.config.ID, msgID) + ":"
+		msgBytes := len([]byte(msg))
+		tentativeSize := batchSize + msgBytes + len([]byte(footer))
 
-        msg := ParsedMessage(betData, c.config.ID, msgID) + ":"
-        msgBytes := len([]byte(msg))
-        tentativeSize := batchSize + msgBytes + len([]byte(footer))
+		// Si el lote está lleno, nos conectamos, lo enviamos y cerramos la conexión.
+		if tentativeSize >= 8192 {
+			log.Infof("Batch full. Preparing to send %d lines.", len(messages))
 
-        if tentativeSize >= 8192 {
-            batchContent := strings.Join(messages, "")
-            batchToSend := "BATCH_LEN=0|" + batchContent + footer
-            totalLen := len([]byte(batchToSend))
-            batchToSend = fmt.Sprintf("BATCH_LEN=%d|%s", totalLen, batchContent) + footer
+			// 1. Conectar
+			conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
+			if err != nil {
+				log.Errorf("action: create_conn_for_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
+				return // Si no podemos conectar, terminamos.
+			}
 
-            log.Infof("Sending batch (size %d bytes, lines %d)", totalLen, len(messages))
-            if err := SendMessage(c.conn, batchToSend, c.config.ID); err != nil {
-                log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
-                return
-            }
+			// 2. Construir y Enviar
+			batchContent := strings.Join(messages, "")
+			batchToSend := "BATCH_LEN=0|" + batchContent + footer
+			totalLen := len([]byte(batchToSend))
+			batchToSend = fmt.Sprintf("BATCH_LEN=%d|%s", totalLen, batchContent) + footer
 
-            messages = messages[:0]
-            batchSize = 0
-            lines = 0
-        }
+			log.Infof("Sending batch (size %d bytes, lines %d)", totalLen, len(messages))
+			if err := SendMessage(conn, batchToSend, c.config.ID); err != nil {
+				log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
+				conn.Close() // Importante: cerrar la conexión aunque falle el envío.
+				return
+			}
 
-        messages = append(messages, msg)
-        batchSize += msgBytes
-        lines++
-        msgID++
-    }
+			// 3. Cerrar
+			conn.Close()
+			log.Infof("action: batch_sent_and_conn_closed | result: success | client_id: %v", c.config.ID)
 
-    if len(messages) > 0 {
-        batchContent := strings.Join(messages, "")
-        batchToSend := "BATCH_LEN=0|" + batchContent + footer
-        totalLen := len([]byte(batchToSend))
-        batchToSend = fmt.Sprintf("BATCH_LEN=%d|%s", totalLen, batchContent) + footer
+			// 4. Resetear para el siguiente lote
+			messages = messages[:0]
+			batchSize = 0
+			lines = 0
+		}
 
-        log.Infof("Sending final batch (size %d bytes, lines %d)", totalLen, len(messages))
-        if err := SendMessage(c.conn, batchToSend, c.config.ID); err != nil {
-            log.Errorf("action: send_final_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
-            return
-        }
-    }
+		messages = append(messages, msg)
+		batchSize += msgBytes
+		lines++
+		msgID++
+	}
 
-    if err := scanner.Err(); err != nil {
-        log.Fatal(err)
-    }
+	// Al final, enviamos el último lote restante. Repetimos la misma lógica.
+	if len(messages) > 0 {
+		log.Infof("Preparing to send final batch of %d lines.", len(messages))
 
-    log.Infof("action: all_batches_sent | result: success | client_id: %v", c.config.ID)
+		// 1. Conectar
+		conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
+		if err != nil {
+			log.Errorf("action: create_conn_for_final_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return
+		}
+
+		// 2. Construir y Enviar
+		batchContent := strings.Join(messages, "")
+		batchToSend := "BATCH_LEN=0|" + batchContent + footer
+		totalLen := len([]byte(batchToSend))
+		batchToSend = fmt.Sprintf("BATCH_LEN=%d|%s", totalLen, batchContent) + footer
+
+		log.Infof("Sending final batch (size %d bytes, lines %d)", totalLen, len(messages))
+		if err := SendMessage(conn, batchToSend, c.config.ID); err != nil {
+			log.Errorf("action: send_final_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			conn.Close()
+			return
+		}
+
+		// 3. Cerrar
+		conn.Close()
+		log.Infof("action: final_batch_sent_and_conn_closed | result: success | client_id: %v", c.config.ID)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Errorf("action: scanner_error | result: fail | client_id: %v | error: %v", c.config.ID, err)
+	}
+
+	log.Infof("action: all_batches_sent | result: success | client_id: %v", c.config.ID)
 }
 
-
 func (c *Client) handleMessage(msgID int) error {
-    message := ParsedMessage(c.config.Data, c.config.ID, msgID)
-    if err := SendMessage(c.conn, message, c.config.ID); err != nil {
-        return fmt.Errorf("send_message: %w", err)
-    }
+	message := ParsedMessage(c.config.Data, c.config.ID, msgID)
+	if err := SendMessage(c.conn, message, c.config.ID); err != nil {
+		return fmt.Errorf("send_message: %w", err)
+	}
 
-    response, err := ReceiveMessage(c.conn, c.config.ID)
-    if err != nil {
-        return fmt.Errorf("receive_message: %w", err)
-    }
+	response, err := ReceiveMessage(c.conn, c.config.ID)
+	if err != nil {
+		return fmt.Errorf("receive_message: %w", err)
+	}
 
-    log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %s",
-        c.config.Data.Documento, c.config.Data.Numero)
+	log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %s",
+		c.config.Data.Documento, c.config.Data.Numero)
 
-    status, info, err := ParseResponse(response)
-    if err != nil {
-        log.Errorf("action: parse_response | result: failed | client_id: %v | error: %v", c.config.ID, err)
-        return err
-    }
+	status, info, err := ParseResponse(response)
+	if err != nil {
+		log.Errorf("action: parse_response | result: failed | client_id: %v | error: %v", c.config.ID, err)
+		return err
+	}
 
-    if status == "success" {
-        log.Infof("action: server_response | result: success | client_id: %v | info: %v", c.config.ID, info)
-    } else {
-        log.Errorf("action: server_response | result: failed | client_id: %v | info: %v", c.config.ID, info)
-    }
-    return nil
+	if status == "success" {
+		log.Infof("action: server_response | result: success | client_id: %v | info: %v", c.config.ID, info)
+	} else {
+		log.Errorf("action: server_response | result: failed | client_id: %v | info: %v", c.config.ID, info)
+	}
+	return nil
 }
 
 func (c *Client) Close() {

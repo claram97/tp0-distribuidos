@@ -31,36 +31,25 @@ class Server:
 
     def __handle_client_connection_debug(self, client_sock):
         """
-        Solo lee mensajes del cliente y los imprime en logging.
-        Responde siempre con 'success' por cada batch recibido.
-        Cierra la conexión al terminar.
+        Lee UN SOLO batch y cierra la conexión.
         """
         try:
-            while True:
-                msg, err = read_message(client_sock)
-                if err is not None:
-                    logging.error(f"action: receive_message | result: fail | error: {err}")
-                    break  # salimos del loop si hubo error
+            # Quitamos el 'while True:'
+            msg, err = read_message(client_sock)
+            if err is not None:
+                # Este error ahora solo ocurrirá si la conexión falla durante la primera lectura
+                logging.error(f"action: receive_message | result: fail | error: {err}")
+                return
 
-                # Si el mensaje está vacío, asumimos que el cliente cerró la conexión
-                if not msg:
-                    break
-
-                # Solo logueamos el mensaje recibido
+            if msg:
                 logging.info(f"action: receive_message_debug | message: {msg.strip()}")
-
-                # Respondemos con success siempre
                 response = "action: apuesta_recibida | result: success\n"
-                try:
-                    client_sock.sendall(response.encode())
-                except OSError as e:
-                    logging.error(f"action: send_response | result: fail | error: {e}")
-                    break
+                client_sock.sendall(response.encode())
+
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
         finally:
-            if client_sock in self._client_connections:
-                self._client_connections.remove(client_sock)
+            # El finally se ejecuta después de procesar el único batch, cerrando la conexión.
             client_sock.close()
             logging.info("action: connection_closed | result: success")
 

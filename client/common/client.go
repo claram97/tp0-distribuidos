@@ -157,34 +157,6 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 	return nil
 }
 
-// func (c *Client) handleMessage(msgID int) error {
-// 	message := ParsedMessage(c.config.Data, c.config.ID, msgID)
-// 	if err := SendMessage(c.conn, message, c.config.ID); err != nil {
-// 		return fmt.Errorf("send_message: %w", err)
-// 	}
-
-// 	response, err := ReceiveMessage(c.conn, c.config.ID)
-// 	if err != nil {
-// 		return fmt.Errorf("receive_message: %w", err)
-// 	}
-
-// 	log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %s",
-// 		c.config.Data.Documento, c.config.Data.Numero)
-
-// 	status, info, err := ParseResponse(response)
-// 	if err != nil {
-// 		log.Errorf("action: parse_response | result: failed | client_id: %v | error: %v", c.config.ID, err)
-// 		return err
-// 	}
-
-// 	if status == "success" {
-// 		log.Infof("action: server_response | result: success | client_id: %v | info: %v", c.config.ID, info)
-// 	} else {
-// 		log.Errorf("action: server_response | result: failed | client_id: %v | info: %v", c.config.ID, info)
-// 	}
-// 	return nil
-// }
-
 func (c *Client) Close() {
 	if c.conn != nil {
 		c.conn.Close()

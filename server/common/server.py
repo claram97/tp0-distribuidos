@@ -144,12 +144,14 @@ class Server:
                 
                 if decode_error:
                     # Hubo error al decodificar una apuesta dentro del lote
+                    logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")
                     response = "BATCH_ERROR\n"
                     client_sock.sendall(response.encode())
                     logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
                     break
                 else:
                     # Todo el lote se procesó correctamente
+                    logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
                     logging.info(f"action: batch_processed | result: success | bets_received: {len(bets)}")
                     response = "ACK_BATCH\n"
                     client_sock.sendall(response.encode())

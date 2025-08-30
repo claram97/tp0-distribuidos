@@ -93,7 +93,6 @@ class Server:
         for idx, bet in enumerate(bets):
             if not bet: # Saltear strings vacíos si los hubiera
                 continue
-            logging.info(f"action: processing_bet | result: in_progress | batch_index: {idx} | raw_bet: '{bet}'")
             status, info, data = decode_message(bet)
             if status != "success":
                 if "longitud del mensaje recibido no es correcta" in info:
@@ -104,7 +103,6 @@ class Server:
                 logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: data is None | raw_bet: '{bet}'")
                 return "decode_error: data is None"
             
-            # --- CORRECCIÓN: Usar claves en MAYÚSCULAS para acceder al diccionario ---
             logging.info(f"action: decode_bet | result: success | batch_index: {idx} | dni: {data['DOCUMENTO']} | numero: {data['NUMERO']}")
             aux_file.write(f'{data["CLIENT_ID"]},{data["NOMBRE"]},{data["APELLIDO"]},{data["DOCUMENTO"]},{data["NACIMIENTO"]},{data["NUMERO"]}\n')
         aux_file.flush()

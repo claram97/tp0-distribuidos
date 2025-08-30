@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/op/go-logging"
 )
@@ -40,18 +41,18 @@ func NewClient(config ClientConfig) *Client {
 }
 
 func ReadResponse(reader *bufio.Reader, clientID string) error {
-    response, err := reader.ReadString('\n')
-    if err != nil {
-        log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
-        return err
-    }
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
+		return err
+	}
 
-    trimmedResponse := strings.TrimSpace(response)
-    log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
-    if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
-        return fmt.Errorf("server returned batch error")
-    }
-    return nil
+	trimmedResponse := strings.TrimSpace(response)
+	log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
+	if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
+		return fmt.Errorf("server returned batch error")
+	}
+	return nil
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
@@ -63,8 +64,8 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
-
 	scanner := bufio.NewScanner(agencyFile)
+
 	messages := make([]string, 0, 100)
 	batchSize := 0
 	footer := "|END_BATCH\n"
@@ -95,11 +96,11 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 
 		if tentativeSize >= 8192 || len(messages) == c.config.BatchMaxAmount {
 			batchContent := strings.Join(messages, "")
-			batchToSend := "BATCH_LEN=0|" + batchContent + footer
-			totalLen := len([]byte(batchToSend))
-			batchToSend = fmt.Sprintf("BATCH_LEN=%d|%s", totalLen, batchContent) + footer
+			batchContent = batchContent + footer
+			batchLen := utf8.RuneCountInString(batchContent)
+			batchToSend := fmt.Sprintf("BATCH_LEN=%d|%s", batchLen, batchContent)
 
-			log.Infof("Sending batch (size %d bytes, lines %d)", totalLen, len(messages))
+			log.Infof("Sending batch (lines %d, characters %d)", len(messages), batchLen)
 			if err := SendMessage(conn, batchToSend, c.config.ID); err != nil {
 				log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
 				return
@@ -108,7 +109,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 
 			if err := ReadResponse(reader, c.config.ID); err != nil {
 				log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				return 
+				return
 			}
 
 			messages = messages[:0]
@@ -121,21 +122,24 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 	}
 
 	if len(messages) > 0 {
+		// --- CORRECCIÓN APLICADA AQUÍ ---
+		// Se usa la misma lógica de contar CARACTERES para el lote final.
 		batchContent := strings.Join(messages, "")
-		batchToSend := "BATCH_LEN=0|" + batchContent + footer
-		totalLen := len([]byte(batchToSend))
-		batchToSend = fmt.Sprintf("BATCH_LEN=%d|%s", totalLen, batchContent) + footer
+		batchContent = batchContent + footer
+		batchLen := utf8.RuneCountInString(batchContent) // Usamos RuneCountInString (CORREGIDO)
+		batchToSend := fmt.Sprintf("BATCH_LEN=%d|%s", batchLen, batchContent)
+		// --- FIN DE LA CORRECCIÓN ---
 
-		log.Infof("Sending final batch (size %d bytes, lines %d)", totalLen, len(messages))
+		log.Infof("Sending final batch (lines %d, characters %d)", len(messages), batchLen)
 		if err := SendMessage(conn, batchToSend, c.config.ID); err != nil {
 			log.Errorf("action: send_final_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
 			return
 		}
 		log.Infof("action: final_batch_sent | result: success | client_id: %v", c.config.ID)
 		if err := ReadResponse(reader, c.config.ID); err != nil {
-            log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
-            return 
-        }
+			log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -153,7 +157,6 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 	}
 
 	log.Infof("action: all_batches_sent_and_acked | result: success | client_id: %v", c.config.ID)
-
 }
 
 // func (c *Client) handleMessage(msgID int) error {

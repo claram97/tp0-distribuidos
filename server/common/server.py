@@ -1,3 +1,4 @@
+import csv
 import socket
 import logging
 
@@ -27,14 +28,96 @@ class Server:
         # the server
         while True:
             client_sock = accept_new_connection(self._server_socket)
-            self.__handle_client_connection_debug(client_sock)
+            self.__handle_client_connection(client_sock)
 
-    def __handle_client_connection_debug(self, client_sock):
+    def __store_bets_and_finish(self, aux_file, client_sock):
+        bets = open("bets.csv", 'a+')
+        aux_file.seek(0)
+        for line in aux_file:
+            bets.write(line)
+        
+        bets.close()
+        aux_file.close()
+        
+        logging.info("action: receive_fin | result: success")
+        response = "ACK_FIN\n"
+        client_sock.sendall(response.encode())
+        logging.info("action: send_ack_fin | result: success")
+
+    def __decode_batch(self, batch_message):
+        """
+        Decodifica y valida un lote completo (batch).
+        Separa el encabezado del payload, valida la longitud en CARACTERES y extrae las apuestas.
+        """
+        try:
+            # 1. Separar encabezado del payload del lote
+            parts = batch_message.split('|', 1)
+            if len(parts) != 2:
+                return None, "Formato de batch inválido (no se encontró 'BATCH_LEN|payload')"
+
+            header, payload = parts
+
+            # 2. Validar el encabezado y la longitud del payload en CARACTERES
+            if not header.startswith("BATCH_LEN="):
+                return None, "El encabezado del batch no comienza con 'BATCH_LEN='"
+            
+            len_value_str = header.split('=')[1]
+            expected_len = int(len_value_str)
+
+            # --- LÓGICA CORREGIDA PARA CARACTERES ---
+            # Comparamos la cantidad de caracteres. Sumamos 1 por el '\n' que el reader quita.
+            if len(payload) + 1 != expected_len:
+                error_msg = f"La longitud del payload del batch no coincide (esperada: {expected_len}, real: {len(payload) + 1})"
+                return None, error_msg
+
+            # 3. Quitar el footer '|END_BATCH' del payload
+            # El '\n' ya fue quitado por el reader, así que buscamos el footer sin él.
+            footer = "|END_BATCH"
+            if not payload.endswith(footer):
+                return None, "El payload del batch no termina con el footer '|END_BATCH'"
+            
+            bets_body = payload[:-len(footer)]
+            
+            # 4. Separar las apuestas individuales
+            # Filtramos para quitar el último elemento si queda vacío por el ':' final
+            individual_bets = [bet for bet in bets_body.split(':') if bet]
+
+            return individual_bets, None
+
+        except (ValueError, IndexError) as e:
+            return None, f"Error al parsear el encabezado del batch: {e}"
+        except Exception as e:
+            return None, f"Error inesperado al decodificar el batch: {e}"
+        
+    def __decode_and_store_bets(self, bets, aux_file, client_sock):
+        for idx, bet in enumerate(bets):
+            if not bet: # Saltear strings vacíos si los hubiera
+                continue
+            logging.info(f"action: processing_bet | result: in_progress | batch_index: {idx} | raw_bet: '{bet}'")
+            status, info, data = decode_message(bet)
+            if status != "success":
+                if "longitud del mensaje recibido no es correcta" in info:
+                    logging.error(f"action: invalid_length | result: fail | batch_index: {idx} | raw_bet: '{bet}' | detalle: {info}")
+                logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: {info} | raw_bet: '{bet}'")
+                return f"decode_error: {info}"
+            if data is None:
+                logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: data is None | raw_bet: '{bet}'")
+                return "decode_error: data is None"
+            
+            # --- CORRECCIÓN: Usar claves en MAYÚSCULAS para acceder al diccionario ---
+            logging.info(f"action: decode_bet | result: success | batch_index: {idx} | dni: {data['DOCUMENTO']} | numero: {data['NUMERO']}")
+            aux_file.write(f'{data["CLIENT_ID"]},{data["NOMBRE"]},{data["APELLIDO"]},{data["DOCUMENTO"]},{data["NACIMIENTO"]},{data["NUMERO"]}\n')
+        aux_file.flush()
+        return None 
+
+    def __handle_client_connection(self, client_sock):
         """
         Mantiene la conexión para un diálogo de pregunta-respuesta con el cliente.
         """
         reader = Communication(client_sock)
-        
+        # Usamos 'w+' para truncar el archivo auxiliar para cada nueva conexión
+        aux_file = open("aux_bets.csv", 'w+') 
+
         try:
             while True:
                 msg, err = reader.read_message()
@@ -46,82 +129,38 @@ class Server:
                     break
                 
                 if msg == "FIN":
-                    logging.info("action: receive_fin | result: success")
-                    response = "ACK_FIN\n"
-                    client_sock.sendall(response.encode())
-                    logging.info("action: send_ack_fin | result: success")
+                    self.__store_bets_and_finish(aux_file, client_sock)
                     break
-                try:
-                    start_index = msg.index('|') + 1
-                    end_index = msg.rindex('|END_BATCH')
-                    bets_body = msg[start_index:end_index]
-                    individual_bets = bets_body.split(':')
-                    # non_empty_bets = [bet for bet in individual_bets if bet]
-                    # bet_count = len(non_empty_bets)
-                    
-                    # if bet_count > 0:
-                    #     logging.info(f"action: sample_bet_received | result: success | first_bet: '{non_empty_bets[0]}'")
-                    for bet in individual_bets:
-                        status, info, data = decode_message(bet)
-                        if status != "success":
-                            logging.error(f"action: decode_bet | result: fail | error: {info}")
-                            response = "BATCH_ERROR\n"
-                            client_sock.sendall(response.encode())
-                            logging.info("action: send_error_batch | result: fail")
-                            client_sock.close()
-                            logging.info("action: connection_closed | result: success")
-                            return
-                    logging.info(f"action: batch_processed | result: success | bets_received: {len(individual_bets)}")
+                
+                # --- LÓGICA DE DECODIFICACIÓN DE BATCH ACTUALIZADA ---
+                bets, batch_error = self.__decode_batch(msg)
+                
+                if batch_error:
+                    logging.error(f"action: decode_batch | result: fail | error: {batch_error}")
+                    # No es necesario enviar BATCH_ERROR aquí, la conexión se cerrará.
+                    break
+                
+                decode_error = self.__decode_and_store_bets(bets, aux_file, client_sock)
+                
+                if decode_error:
+                    # Hubo error al decodificar una apuesta dentro del lote
+                    response = "BATCH_ERROR\n"
+                    client_sock.sendall(response.encode())
+                    logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
+                    break
+                else:
+                    # Todo el lote se procesó correctamente
+                    logging.info(f"action: batch_processed | result: success | bets_received: {len(bets)}")
                     response = "ACK_BATCH\n"
                     client_sock.sendall(response.encode())
-                    logging.info(f"action: send_ack_batch | result: success | bets_received: {len(individual_bets)}")
-                except ValueError as e:
-                    logging.error(f"action: parse_batch | result: fail | error: {e}")
-                    continue
+                    logging.info(f"action: send_ack_batch | result: success | bets_received: {len(bets)}")
+
         finally:
             client_sock.close()
+            # Se asegura de cerrar el archivo si la conexión se interrumpe
+            if not aux_file.closed:
+                aux_file.close()
             logging.info("action: connection_closed | result: success")
-
-    def __handle_client_connection(self, client_sock):
-        """
-        Read message from a specific client socket and closes the socket
-
-        If a problem arises in the communication with the client, the
-        client socket will also be closed
-        """
-        reader = Communication(client_sock)
-        
-        try:
-            msg, err = reader.read_message()
-            if err is not None:
-                logging.error(f"action: receive_message | result: fail | error: {err}")
-                return
-
-            status, info, data = decode_message(msg)
-
-            addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]}')
-
-            if status == "success":
-                store_bets([Bet(
-                    agency=int(data["client_id"]),
-                    first_name=data["nombre"],
-                    last_name=data["apellido"],
-                    document=data["documento"],
-                    birthdate=data["nacimiento"],
-                    number=data["numero"]
-                )])
-
-            logging.info(f'action: apuesta_almacenada | result: success | dni: {data["documento"]} | numero: {data["numero"]}.')
-            response_bytes = encode_message(status, info)
-            send_message(client_sock, response_bytes)
-            self._client_connections.append(client_sock)
-        except OSError as e:
-            logging.error("action: receive_message | result: fail | error: {e}")
-        finally:
-            if client_sock in self._client_connections:
-                self._client_connections.remove(client_sock)
-            client_sock.close()
 
     def stop(self):
         self._server_socket.close()
@@ -132,4 +171,3 @@ class Server:
         self._client_connections.clear()
         logging.info("action: exit | result: success")
 
-        

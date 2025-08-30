@@ -103,7 +103,6 @@ class Server:
                 logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: data is None | raw_bet: '{bet}'")
                 return "decode_error: data is None"
             
-            logging.info(f"action: decode_bet | result: success | batch_index: {idx} | dni: {data['DOCUMENTO']} | numero: {data['NUMERO']}")
             aux_file.write(f'{data["CLIENT_ID"]},{data["NOMBRE"]},{data["APELLIDO"]},{data["DOCUMENTO"]},{data["NACIMIENTO"]},{data["NUMERO"]}\n')
         aux_file.flush()
         return None 

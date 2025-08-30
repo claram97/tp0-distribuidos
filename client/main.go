@@ -165,13 +165,26 @@ func main() {
 	}
 
 	done := make(chan struct{})
+	var clientErr error
 	go func() {
-		client.StartClientLoop(ctx, file)
+		clientErr = client.StartClientLoop(ctx, file)
 		close(done)
 	}()
 
 	select {
 	case <-done:
+		if clientErr != nil {
+			log.Errorf("action: client_finished | result: fail | client_id: %s | error: %v", clientConfig.ID, clientErr)
+			file.Close()
+			client.Close()
+			if strings.Contains(clientErr.Error(), "batch_error") || strings.Contains(clientErr.Error(), "final_batch_error") {
+				os.Exit(2)
+			} else if strings.Contains(clientErr.Error(), "connection_error") {
+				os.Exit(3)
+			} else {
+				os.Exit(1)
+			}
+		}
 		log.Infof("action: client_finished | result: success | client_id: %s", clientConfig.ID)
 	case <-ctx.Done():
 		log.Infof("action: sigterm_received | result: exiting | client_id: %s", clientConfig.ID)

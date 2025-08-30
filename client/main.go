@@ -153,6 +153,7 @@ func main() {
 
 	PrintConfig(v)
 
+	// time.Sleep(10 * time.Second)
 	clientConfig := getClientConfig(v)
 	client := common.NewClient(clientConfig)
 
@@ -185,10 +186,18 @@ func main() {
 			}
 		}
 		log.Infof("action: client_finished | result: success | client_id: %s", clientConfig.ID)
+		file.Close()
+		client.Close()
+		os.Exit(0)
 	case <-ctx.Done():
 		log.Infof("action: sigterm_received | result: exiting | client_id: %s", clientConfig.ID)
+		file.Close()
+		client.Close()
+		os.Exit(0)
 	}
 
 	file.Close()
 	client.Close()
+	os.Exit(0)
+
 }

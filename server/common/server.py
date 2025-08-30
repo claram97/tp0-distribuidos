@@ -38,47 +38,46 @@ class Server:
         try:
             while True:
                 msg, err = reader.read_message()
-
                 if err is not None:
                     logging.error(f"action: receive_message | result: fail | error: {err}")
                     break
-
                 if msg is None:
                     logging.info("action: client_disconnected_unexpectedly | result: success")
                     break
                 
-                # --- NUEVA LÓGICA: Manejar el mensaje de finalización ---
                 if msg == "FIN":
                     logging.info("action: receive_fin | result: success")
-                    # El cliente terminó, le enviamos la confirmación final y cerramos.
                     response = "ACK_FIN\n"
                     client_sock.sendall(response.encode())
                     logging.info("action: send_ack_fin | result: success")
-                    break # Salimos del bucle para cerrar la conexión.
-
-                # --- LÓGICA EXISTENTE CON UN AÑADIDO ---
+                    break
                 try:
                     start_index = msg.index('|') + 1
                     end_index = msg.rindex('|END_BATCH')
                     bets_body = msg[start_index:end_index]
                     individual_bets = bets_body.split(':')
-                    non_empty_bets = [bet for bet in individual_bets if bet]
-                    bet_count = len(non_empty_bets)
+                    # non_empty_bets = [bet for bet in individual_bets if bet]
+                    # bet_count = len(non_empty_bets)
                     
-                    logging.info(f"action: batch_processed | result: success | bets_received: {bet_count}")
-
-                    # --- AÑADIDO: Enviar confirmación de lote (ACK_BATCH) ---
+                    # if bet_count > 0:
+                    #     logging.info(f"action: sample_bet_received | result: success | first_bet: '{non_empty_bets[0]}'")
+                    for bet in individual_bets:
+                        status, info, data = decode_message(bet)
+                        if status != "success":
+                            logging.error(f"action: decode_bet | result: fail | error: {info}")
+                            response = "BATCH_ERROR\n"
+                            client_sock.sendall(response.encode())
+                            logging.info("action: send_error_batch | result: fail")
+                            client_sock.close()
+                            logging.info("action: connection_closed | result: success")
+                            return
+                    logging.info(f"action: batch_processed | result: success | bets_received: {len(individual_bets)}")
                     response = "ACK_BATCH\n"
                     client_sock.sendall(response.encode())
-                    logging.info(f"action: send_ack_batch | result: success | bets_received: {bet_count}")
-
+                    logging.info(f"action: send_ack_batch | result: success | bets_received: {len(individual_bets)}")
                 except ValueError as e:
-                    # Si un batch está mal formado, igual hay que notificar al cliente.
-                    # Podríamos definir un mensaje de error como "NACK_BATCH\n" (Not Acknowledged)
-                    # pero por ahora, para mantenerlo simple, no respondemos en caso de error y logueamos.
                     logging.error(f"action: parse_batch | result: fail | error: {e}")
                     continue
-
         finally:
             client_sock.close()
             logging.info("action: connection_closed | result: success")

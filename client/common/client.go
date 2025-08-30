@@ -39,17 +39,19 @@ func NewClient(config ClientConfig) *Client {
 	return &Client{config: config}
 }
 
-// ReadResponse lee una sola línea del servidor para obtener la confirmación.
 func ReadResponse(reader *bufio.Reader, clientID string) error {
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
-		return err
-	}
+    response, err := reader.ReadString('\n')
+    if err != nil {
+        log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
+        return err
+    }
 
-	trimmedResponse := strings.TrimSpace(response)
-	log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
-	return nil
+    trimmedResponse := strings.TrimSpace(response)
+    log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
+    if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
+        return fmt.Errorf("server returned batch error")
+    }
+    return nil
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
@@ -104,9 +106,9 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 			}
 			log.Infof("action: batch_sent | result: success | client_id: %v", c.config.ID)
 
-			// --- AÑADIDO: Esperar la confirmación del servidor ---
 			if err := ReadResponse(reader, c.config.ID); err != nil {
-				return // Si no hay respuesta, cerramos.
+				log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
+				return 
 			}
 
 			messages = messages[:0]
@@ -131,8 +133,9 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 		}
 		log.Infof("action: final_batch_sent | result: success | client_id: %v", c.config.ID)
 		if err := ReadResponse(reader, c.config.ID); err != nil {
-			return
-		}
+            log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
+            return 
+        }
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -145,7 +148,6 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) {
 		return
 	}
 
-	// --- AÑADIDO: Esperar la confirmación final del servidor ---
 	if err := ReadResponse(reader, c.config.ID); err != nil {
 		return
 	}

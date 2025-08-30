@@ -20,7 +20,6 @@ def is_valid_len(len_str, message):
             )
     return int(len_str) == received_len
 
-
 def decode_message(message):
     splitted_msg = message.split('|')
 
@@ -40,6 +39,8 @@ def decode_message(message):
             return "failed", "LEN del mensaje no es un entero válido", None
 
         # TODO: agregar más validaciones
+        if len(documento) != 8 or not documento.isdigit():
+            return "failed", "el documento debe tener 8 dígitos", None
 
         data = {
             "nombre": nombre,

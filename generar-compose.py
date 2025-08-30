@@ -42,7 +42,7 @@ def write_file(file_name, clients):
             ],
             "volumes": [
                 "./client/config.yaml:/config.yaml:rw",
-                "./client/data:/data:rw"
+                "./.data:/data:rw"
             ],
             "networks": ["testing_net"],
             "depends_on": ["server"]

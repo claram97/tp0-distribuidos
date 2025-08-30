@@ -5,29 +5,79 @@ services:
     image: server:latest
     entrypoint: python3 /main.py
     environment:
-      - PYTHONUNBUFFERED=1
+    - PYTHONUNBUFFERED=1
     volumes:
-      - ./server/config.ini:/server/config.ini:rw
+    - ./server/config.ini:/server/config.ini:rw
     networks:
-      - testing_net
-
+    - testing_net
   client1:
     container_name: client1
     image: client:latest
     entrypoint: /client
     environment:
-      - CLI_ID=1
-    networks:
-      - testing_net
+    - CLI_ID=1
     volumes:
-      - ./client/config.yaml:/config.yaml:rw
-      - ./.data:/data:rw
+    - ./client/config.yaml:/config.yaml:rw
+    - ./.data:/data:rw
+    networks:
+    - testing_net
     depends_on:
-      - server
-
+    - server
+  client2:
+    container_name: client2
+    image: client:latest
+    entrypoint: /client
+    environment:
+    - CLI_ID=2
+    volumes:
+    - ./client/config.yaml:/config.yaml:rw
+    - ./.data:/data:rw
+    networks:
+    - testing_net
+    depends_on:
+    - server
+  client3:
+    container_name: client3
+    image: client:latest
+    entrypoint: /client
+    environment:
+    - CLI_ID=3
+    volumes:
+    - ./client/config.yaml:/config.yaml:rw
+    - ./.data:/data:rw
+    networks:
+    - testing_net
+    depends_on:
+    - server
+  client4:
+    container_name: client4
+    image: client:latest
+    entrypoint: /client
+    environment:
+    - CLI_ID=4
+    volumes:
+    - ./client/config.yaml:/config.yaml:rw
+    - ./.data:/data:rw
+    networks:
+    - testing_net
+    depends_on:
+    - server
+  client5:
+    container_name: client5
+    image: client:latest
+    entrypoint: /client
+    environment:
+    - CLI_ID=5
+    volumes:
+    - ./client/config.yaml:/config.yaml:rw
+    - ./.data:/data:rw
+    networks:
+    - testing_net
+    depends_on:
+    - server
 networks:
   testing_net:
     ipam:
       driver: default
       config:
-        - subnet: 172.25.125.0/24
+      - subnet: 172.25.125.0/24

@@ -30,19 +30,12 @@ class Server:
             client_sock = accept_new_connection(self._server_socket)
             self.__handle_client_connection(client_sock)
 
-    def __store_bets_and_finish(self, aux_file, client_sock):
-        bets = open("bets.csv", 'a+')
-        aux_file.seek(0)
-        for line in aux_file:
-            bets.write(line)
-        
-        bets.close()
-        aux_file.close()
-        
+    def __store_bets_and_finish(self, client_sock):
         logging.info("action: receive_fin | result: success")
         response = "ACK_FIN\n"
         client_sock.sendall(response.encode())
         logging.info("action: send_ack_fin | result: success")
+
 
     def __decode_batch(self, batch_message):
         """
@@ -89,7 +82,8 @@ class Server:
         except Exception as e:
             return None, f"Error inesperado al decodificar el batch: {e}"
         
-    def __decode_and_store_bets(self, bets, aux_file, client_sock):
+    def __decode_and_store_bets(self, bets):
+        valid_bets = []
         for idx, bet in enumerate(bets):
             if not bet: # Saltear strings vacíos si los hubiera
                 continue
@@ -103,17 +97,28 @@ class Server:
                 logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: data is None | raw_bet: '{bet}'")
                 return "decode_error: data is None"
             
-            aux_file.write(f'{data["CLIENT_ID"]},{data["NOMBRE"]},{data["APELLIDO"]},{data["DOCUMENTO"]},{data["NACIMIENTO"]},{data["NUMERO"]}\n')
-        aux_file.flush()
-        return None 
+            # Crear objeto Bet y agregarlo a la lista
+            bet_obj = Bet(
+                agency=data["CLIENT_ID"],
+                first_name=data["NOMBRE"],
+                last_name=data["APELLIDO"],
+                document=data["DOCUMENTO"],
+                birthdate=data["NACIMIENTO"],
+                number=data["NUMERO"]
+            )
+            valid_bets.append(bet_obj)
+        
+        # Almacenar todas las apuestas válidas del batch
+        if valid_bets:
+            store_bets(valid_bets)
+        
+        return None
 
     def __handle_client_connection(self, client_sock):
         """
         Mantiene la conexión para un diálogo de pregunta-respuesta con el cliente.
         """
         reader = Communication(client_sock)
-        # Usamos 'w+' para truncar el archivo auxiliar para cada nueva conexión
-        aux_file = open("aux_bets.csv", 'w+') 
 
         try:
             while True:
@@ -126,7 +131,7 @@ class Server:
                     break
                 
                 if msg == "FIN":
-                    self.__store_bets_and_finish(aux_file, client_sock)
+                    self.__store_bets_and_finish(client_sock)
                     break
                 
                 # --- LÓGICA DE DECODIFICACIÓN DE BATCH ACTUALIZADA ---
@@ -134,10 +139,9 @@ class Server:
                 
                 if batch_error:
                     logging.error(f"action: decode_batch | result: fail | error: {batch_error}")
-                    # No es necesario enviar BATCH_ERROR aquí, la conexión se cerrará.
                     break
                 
-                decode_error = self.__decode_and_store_bets(bets, aux_file, client_sock)
+                decode_error = self.__decode_and_store_bets(bets)
                 
                 if decode_error:
                     # Hubo error al decodificar una apuesta dentro del lote
@@ -156,9 +160,6 @@ class Server:
 
         finally:
             client_sock.close()
-            # Se asegura de cerrar el archivo si la conexión se interrumpe
-            if not aux_file.closed:
-                aux_file.close()
             logging.info("action: connection_closed | result: success")
 
     def stop(self):

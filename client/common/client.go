@@ -40,19 +40,21 @@ func NewClient(config ClientConfig) *Client {
 	return &Client{config: config}
 }
 
-func ReadResponse(reader *bufio.Reader, clientID string) error {
+func ReadResponse(reader *bufio.Reader, clientID string) (string, error) {
 	response, err := reader.ReadString('\n')
 	if err != nil {
 		log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
-		return err
+		return "", err
 	}
 
 	trimmedResponse := strings.TrimSpace(response)
 	log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
+
 	if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
-		return fmt.Errorf("server returned batch error")
+		return trimmedResponse, fmt.Errorf("server returned batch error")
 	}
-	return nil
+
+	return trimmedResponse, nil
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error {
@@ -107,7 +109,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 			}
 			log.Infof("action: batch_sent | result: success | client_id: %v", c.config.ID)
 
-			if err := ReadResponse(reader, c.config.ID); err != nil {
+			if _, err := ReadResponse(reader, c.config.ID); err != nil {
 				log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
 				return fmt.Errorf("batch_error: %w", err)
 			}
@@ -132,8 +134,10 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 			log.Errorf("action: send_final_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
 			return fmt.Errorf("send_final_batch_error: %w", err)
 		}
+
 		log.Infof("action: final_batch_sent | result: success | client_id: %v", c.config.ID)
-		if err := ReadResponse(reader, c.config.ID); err != nil {
+
+		if _, err := ReadResponse(reader, c.config.ID); err != nil {
 			log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
 			return fmt.Errorf("final_batch_error: %w", err)
 		}
@@ -149,8 +153,13 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 		return fmt.Errorf("send_fin_error: %w", err)
 	}
 
-	if err := ReadResponse(reader, c.config.ID); err != nil {
+	finalResponse, err := ReadResponse(reader, c.config.ID)
+	if err != nil {
 		return fmt.Errorf("fin_response_error: %w", err)
+	}
+
+	if finalResponse != "ACK_FIN" {
+		return fmt.Errorf("unexpected_final_response: expected 'ACK_FIN' but got '%s'", finalResponse)
 	}
 
 	log.Infof("action: all_batches_sent_and_acked | result: success | client_id: %v", c.config.ID)

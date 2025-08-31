@@ -155,6 +155,9 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 
 	log.Infof("action: waiting_for_winners_and_fin | result: in_progress | client_id: %v", c.config.ID)
 
+	// Agregado: Variable para contar ganadores
+	winnerCount := 0
+
 	// Bucle para recibir mensajes del servidor (ganadores o el ACK_FIN)
 	for {
 		msg, err := ReadResponse(reader, c.config.ID)
@@ -169,9 +172,13 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 			break
 		}
 
-		// Si no es ACK_FIN, es un mensaje de un ganador. Lo mostramos.
+		// Si no es ACK_FIN, es un mensaje de un ganador. Lo mostramos y contamos.
 		log.Infof("action: winner_announcement_received | result: success | client_id: %v | message: %s", c.config.ID, msg)
+		winnerCount++
 	}
+
+	// Agregado: Impresión de la cantidad de ganadores
+	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", winnerCount)
 
 	// Ahora que recibimos el ACK_FIN del servidor, le respondemos con el nuestro.
 	log.Infof("action: sending_client_ack_fin | result: in_progress | client_id: %v", c.config.ID)

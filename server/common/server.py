@@ -8,13 +8,14 @@ from common.communicationUtils import decode_message, encode_message
 
 
 class Server:
-    def __init__(self, port, listen_backlog):
+    def __init__(self, port, listen_backlog, clients_number):
         # Initialize server socket
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
         self._client_connections = {}
         self._confirmation_count = 0
+        self._clients_number = clients_number
 
     def run(self):
         """
@@ -33,15 +34,12 @@ class Server:
 
     def __store_bets_and_finish(self, client_sock):
         self._confirmation_count += 1
-        if self._confirmation_count == len(self._client_connections):
-            logging.info("action: all_confirmations_received for %d clients | result: success", self._confirmation_count)
         logging.info("action: receive_fin | result: success")
         response = "ACK_FIN\n"
         client_sock.sendall(response.encode())
         logging.info("action: send_ack_fin | result: success")
-        # Chequeo si tengo cantidad de confirmaciones == cantidad de client socks
-        # Si es así, procedo con el sorteo
-        # Si no es así, ta
+        if self._confirmation_count == self._clients_number:
+            logging.info("action: all_confirmations_received for %d clients | result: success", self._confirmation_count)
 
 
     def __decode_batch(self, batch_message):

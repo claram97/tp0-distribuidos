@@ -48,7 +48,7 @@ func ReadResponse(reader *bufio.Reader, clientID string) (string, error) {
 	}
 
 	trimmedResponse := strings.TrimSpace(response)
-	log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
+	// log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
 
 	if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
 		return trimmedResponse, fmt.Errorf("server returned batch error")

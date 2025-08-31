@@ -13,7 +13,7 @@ class Server:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
-        self._client_connections = []
+        self._client_connections = {}
 
     def run(self):
         """
@@ -82,8 +82,10 @@ class Server:
         except Exception as e:
             return None, f"Error inesperado al decodificar el batch: {e}"
         
-    def __decode_and_store_bets(self, bets):
+    def __decode_and_store_bets(self, bets, client_sock):
         valid_bets = []
+        client_id = None
+        
         for idx, bet in enumerate(bets):
             if not bet: # Saltear strings vacíos si los hubiera
                 continue
@@ -96,6 +98,14 @@ class Server:
             if data is None:
                 logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: data is None | raw_bet: '{bet}'")
                 return "decode_error: data is None"
+            
+            # Extraer CLIENT_ID de la primera apuesta válida
+            if client_id is None:
+                client_id = data["CLIENT_ID"]
+                # Agregar conexión si no existe
+                if client_id not in self._client_connections:
+                    self._client_connections[client_id] = client_sock
+                    logging.info(f"action: client_registered | result: success | client_id: {client_id}")
             
             # Crear objeto Bet y agregarlo a la lista
             bet_obj = Bet(
@@ -141,7 +151,7 @@ class Server:
                     logging.error(f"action: decode_batch | result: fail | error: {batch_error}")
                     break
                 
-                decode_error = self.__decode_and_store_bets(bets)
+                decode_error = self.__decode_and_store_bets(bets, client_sock)
                 
                 if decode_error:
                     # Hubo error al decodificar una apuesta dentro del lote
@@ -164,7 +174,7 @@ class Server:
 
     def stop(self):
         self._server_socket.close()
-        for client_socket in self._client_connections:
+        for client_socket in self._client_connections.values():
             client_socket.close()
             logging.info("action: exit | result: success")
 

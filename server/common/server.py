@@ -2,7 +2,7 @@ import csv
 import socket
 import logging
 
-from common.utils import Bet, store_bets
+from common.utils import Bet, has_won, load_bets, store_bets
 from common.communication import Communication, accept_new_connection, send_message
 from common.communicationUtils import decode_message, encode_message
 
@@ -40,7 +40,10 @@ class Server:
         logging.info("action: send_ack_fin | result: success")
         if self._confirmation_count == self._clients_number:
             logging.info("action: all_confirmations_received for %d clients | result: success", self._confirmation_count)
-
+            for bet in load_bets():
+                if has_won(bet):
+                    logging.info(f"action: winner_found | result: success | winner: {bet.first_name} {bet.last_name} | number: {bet.number}")
+                    break
 
     def __decode_batch(self, batch_message):
         """

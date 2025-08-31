@@ -173,7 +173,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 		}
 
 		// Si no es ACK_FIN, es un mensaje de un ganador. Lo mostramos y contamos.
-		log.Infof("action: winner_announcement_received | result: success | client_id: %v | message: %s", c.config.ID, msg)
+		// log.Infof("action: winner_announcement_received | result: success | client_id: %v | message: %s", c.config.ID, msg)
 		winnerCount++
 	}
 

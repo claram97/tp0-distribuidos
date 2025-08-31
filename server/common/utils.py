@@ -6,9 +6,9 @@ import time
 """ Bets storage location. """
 STORAGE_FILEPATH = "./bets.csv"
 """ Simulated winner number in the lottery contest. """
-# LOTTERY_WINNER_NUMBER = 7574
+LOTTERY_WINNER_NUMBER = 7574
 
-LOTTERY_WINNER_NUMBER = 1342
+# LOTTERY_WINNER_NUMBER = 1342
 
 """ A lottery bet registry. """
 class Bet:

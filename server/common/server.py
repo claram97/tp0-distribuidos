@@ -14,6 +14,7 @@ class Server:
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
         self._client_connections = {}
+        self._confirmation_count = 0
 
     def run(self):
         """
@@ -31,10 +32,16 @@ class Server:
             self.__handle_client_connection(client_sock)
 
     def __store_bets_and_finish(self, client_sock):
+        self._confirmation_count += 1
+        if self._confirmation_count == len(self._client_connections):
+            logging.info("action: all_confirmations_received for %d clients | result: success", self._confirmation_count)
         logging.info("action: receive_fin | result: success")
         response = "ACK_FIN\n"
         client_sock.sendall(response.encode())
         logging.info("action: send_ack_fin | result: success")
+        # Chequeo si tengo cantidad de confirmaciones == cantidad de client socks
+        # Si es así, procedo con el sorteo
+        # Si no es así, ta
 
 
     def __decode_batch(self, batch_message):
@@ -124,6 +131,14 @@ class Server:
         
         return None
 
+    def __sorteo(self):
+        """
+        Realiza el sorteo y notifica a los clientes.
+        """
+        # Implementar la lógica del sorteo y la notificación a los clientes
+        # Mandar los resultados y ahí sí cerrar las conexiones
+        pass
+
     def __handle_client_connection(self, client_sock):
         """
         Mantiene la conexión para un diálogo de pregunta-respuesta con el cliente.
@@ -169,6 +184,9 @@ class Server:
                     logging.info(f"action: send_ack_batch | result: success | bets_received: {len(bets)}")
 
         finally:
+            # Chequeo si tengo cantidad de confirmaciones == cantidad de client socks
+            # Si es así, procedo con el sorteo
+            # Si no es así, ta
             client_sock.close()
             logging.info("action: connection_closed | result: success")
 

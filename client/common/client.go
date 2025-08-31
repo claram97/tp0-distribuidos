@@ -153,16 +153,34 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 		return fmt.Errorf("send_fin_error: %w", err)
 	}
 
-	finalResponse, err := ReadResponse(reader, c.config.ID)
-	if err != nil {
-		return fmt.Errorf("fin_response_error: %w", err)
+	log.Infof("action: waiting_for_winners_and_fin | result: in_progress | client_id: %v", c.config.ID)
+
+	// Bucle para recibir mensajes del servidor (ganadores o el ACK_FIN)
+	for {
+		msg, err := ReadResponse(reader, c.config.ID)
+		if err != nil {
+			log.Errorf("action: read_server_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return fmt.Errorf("error reading from server: %w", err)
+		}
+
+		// Si el servidor nos manda el ACK_FIN, salimos del bucle para terminar.
+		if msg == "ACK_FIN" {
+			log.Infof("action: server_fin_ack_received | result: success | client_id: %v", c.config.ID)
+			break
+		}
+
+		// Si no es ACK_FIN, es un mensaje de un ganador. Lo mostramos.
+		log.Infof("action: winner_announcement_received | result: success | client_id: %v | message: %s", c.config.ID, msg)
 	}
 
-	if finalResponse != "ACK_FIN" {
-		return fmt.Errorf("unexpected_final_response: expected 'ACK_FIN' but got '%s'", finalResponse)
+	// Ahora que recibimos el ACK_FIN del servidor, le respondemos con el nuestro.
+	log.Infof("action: sending_client_ack_fin | result: in_progress | client_id: %v", c.config.ID)
+	if err := SendMessage(conn, "ACK_FIN\n", c.config.ID); err != nil {
+		log.Errorf("action: send_client_ack_fin | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return fmt.Errorf("send_client_ack_fin_error: %w", err)
 	}
 
-	log.Infof("action: all_batches_sent_and_acked | result: success | client_id: %v", c.config.ID)
+	log.Infof("action: client_finished_gracefully | result: success | client_id: %v", c.config.ID)
 	return nil
 }
 

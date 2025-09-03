@@ -1,7 +1,8 @@
 import argparse
 import yaml
 
-# TO-DO: agregar manejo de errores
+MAX_CLIENTS = 5
+
 def write_file(file_name, clients):
     data = {
         "name": "tp0",
@@ -51,17 +52,26 @@ def write_file(file_name, clients):
     with open(file_name, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
-# TO-DO: agregar validaciones de máximos y mínimos
+def is_valid_client_count(value):
+    ivalue = int(value)
+    if ivalue < 1 or ivalue > MAX_CLIENTS:
+        raise argparse.ArgumentTypeError(f"Invalid number of clients: {value}. Must be between 1 and {MAX_CLIENTS}.")
+    return ivalue
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Generador de docker-compose")
-    
-    parser.add_argument("--output_file", required=True, help="Nombre del archivo de salida que se va a generar")
-    parser.add_argument("--clients", required=True, type=int, help="Cantidad de clientes que se van a generar")
+    parser.add_argument(
+        "--output_file", required=True, help="Nombre del archivo de salida"
+    )
+    parser.add_argument(
+        "--clients",
+        required=True,
+        type=is_valid_client_count,
+        help=f"Cantidad de clientes (entre 1 y {MAX_CLIENTS})"
+    )
 
     args = parser.parse_args()
-
     return args.output_file, args.clients
-
 
 def main():
     output_file, clients = parse_arguments()

@@ -6,7 +6,7 @@ services:
     entrypoint: python3 /main.py
     environment:
     - PYTHONUNBUFFERED=1
-    - CLIENTS_NUMBER=1
+    - CLIENTS_NUMBER=2
     volumes:
     - ./server/config.ini:/server/config.ini:rw
     networks:
@@ -17,6 +17,19 @@ services:
     entrypoint: /client
     environment:
     - CLI_ID=1
+    volumes:
+    - ./client/config.yaml:/config.yaml:rw
+    - ./.data:/data:rw
+    networks:
+    - testing_net
+    depends_on:
+    - server
+  client2:
+    container_name: client2
+    image: client:latest
+    entrypoint: /client
+    environment:
+    - CLI_ID=2
     volumes:
     - ./client/config.yaml:/config.yaml:rw
     - ./.data:/data:rw

@@ -8,5 +8,4 @@ fi
 output_file=$1
 clients=$2
 
-# TO-DO: chequear errores
 python3 generar-compose.py --output_file $output_file --clients $clients

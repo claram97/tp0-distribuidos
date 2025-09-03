@@ -75,4 +75,4 @@ def accept_new_connection(server_socket):
     logging.info('action: accept_connections | result: in_progress')
     c, addr = server_socket.accept()
     logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
-    return c
+    return c, addr

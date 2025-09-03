@@ -27,6 +27,7 @@ def initialize_config():
         config_params["port"] = int(os.getenv('SERVER_PORT', config["DEFAULT"]["SERVER_PORT"]))
         config_params["listen_backlog"] = int(os.getenv('SERVER_LISTEN_BACKLOG', config["DEFAULT"]["SERVER_LISTEN_BACKLOG"]))
         config_params["logging_level"] = os.getenv('LOGGING_LEVEL', config["DEFAULT"]["LOGGING_LEVEL"])
+        config_params["clients_number"] = int(os.getenv('CLIENTS_NUMBER'))
     except KeyError as e:
         raise KeyError("Key was not found. Error: {} .Aborting server".format(e))
     except ValueError as e:
@@ -36,10 +37,22 @@ def initialize_config():
 
 
 def main():
-    config_params = initialize_config()
+    try:
+        config_params = initialize_config()
+    except KeyError as e:
+        if "CLIENTS_NUMBER" in str(e):
+            print("ERROR: CLIENTS_NUMBER environment variable is required but not found")
+        else:
+            print(f"Configuration error: {e}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Configuration parsing error: {e}")
+        sys.exit(1)
+
     logging_level = config_params["logging_level"]
     port = config_params["port"]
     listen_backlog = config_params["listen_backlog"]
+    clients_number = config_params["clients_number"]
 
     signal.signal(signal.SIGTERM, finalize)
 
@@ -49,10 +62,14 @@ def main():
     # of the component
     logging.debug(f"action: config | result: success | port: {port} | "
                   f"listen_backlog: {listen_backlog} | logging_level: {logging_level}")
+    logging.debug(f"action: config | result: success | port: {port} | "
+                  f"listen_backlog: {listen_backlog} | logging_level: {logging_level} | "
+                  f"clients_number: {clients_number}")
+
 
     # Initialize server and start server loop
     global server
-    server = Server(port, listen_backlog)
+    server = Server(port, listen_backlog, clients_number)
     server.run()
 
 def initialize_log(logging_level):

@@ -40,19 +40,21 @@ func NewClient(config ClientConfig) *Client {
 	return &Client{config: config}
 }
 
-func ReadResponse(reader *bufio.Reader, clientID string) error {
+func ReadResponse(reader *bufio.Reader, clientID string) (string, error) {
 	response, err := reader.ReadString('\n')
 	if err != nil {
 		log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
-		return err
+		return "", err
 	}
 
 	trimmedResponse := strings.TrimSpace(response)
-	log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
+	// log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
+
 	if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
-		return fmt.Errorf("server returned batch error")
+		return trimmedResponse, fmt.Errorf("server returned batch error")
 	}
-	return nil
+
+	return trimmedResponse, nil
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error {
@@ -107,7 +109,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 			}
 			log.Infof("action: batch_sent | result: success | client_id: %v", c.config.ID)
 
-			if err := ReadResponse(reader, c.config.ID); err != nil {
+			if _, err := ReadResponse(reader, c.config.ID); err != nil {
 				log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
 				return fmt.Errorf("batch_error: %w", err)
 			}
@@ -132,8 +134,10 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 			log.Errorf("action: send_final_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
 			return fmt.Errorf("send_final_batch_error: %w", err)
 		}
+
 		log.Infof("action: final_batch_sent | result: success | client_id: %v", c.config.ID)
-		if err := ReadResponse(reader, c.config.ID); err != nil {
+
+		if _, err := ReadResponse(reader, c.config.ID); err != nil {
 			log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
 			return fmt.Errorf("final_batch_error: %w", err)
 		}
@@ -149,11 +153,41 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 		return fmt.Errorf("send_fin_error: %w", err)
 	}
 
-	if err := ReadResponse(reader, c.config.ID); err != nil {
-		return fmt.Errorf("fin_response_error: %w", err)
+	log.Infof("action: waiting_for_winners_and_fin | result: in_progress | client_id: %v", c.config.ID)
+
+	// Agregado: Variable para contar ganadores
+	winnerCount := 0
+
+	// Bucle para recibir mensajes del servidor (ganadores o el ACK_FIN)
+	for {
+		msg, err := ReadResponse(reader, c.config.ID)
+		if err != nil {
+			log.Errorf("action: read_server_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return fmt.Errorf("error reading from server: %w", err)
+		}
+
+		// Si el servidor nos manda el ACK_FIN, salimos del bucle para terminar.
+		if msg == "ACK_FIN" {
+			log.Infof("action: server_fin_ack_received | result: success | client_id: %v", c.config.ID)
+			break
+		}
+
+		// Si no es ACK_FIN, es un mensaje de un ganador. Lo mostramos y contamos.
+		// log.Infof("action: winner_announcement_received | result: success | client_id: %v | message: %s", c.config.ID, msg)
+		winnerCount++
 	}
 
-	log.Infof("action: all_batches_sent_and_acked | result: success | client_id: %v", c.config.ID)
+	// Agregado: Impresión de la cantidad de ganadores
+	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", winnerCount)
+
+	// Ahora que recibimos el ACK_FIN del servidor, le respondemos con el nuestro.
+	log.Infof("action: sending_client_ack_fin | result: in_progress | client_id: %v", c.config.ID)
+	if err := SendMessage(conn, "ACK_FIN\n", c.config.ID); err != nil {
+		log.Errorf("action: send_client_ack_fin | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return fmt.Errorf("send_client_ack_fin_error: %w", err)
+	}
+
+	log.Infof("action: client_finished_gracefully | result: success | client_id: %v", c.config.ID)
 	return nil
 }
 

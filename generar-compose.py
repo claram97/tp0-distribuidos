@@ -12,6 +12,7 @@ def write_file(file_name, clients):
                 "entrypoint": "python3 /main.py",
                 "environment": [
                     "PYTHONUNBUFFERED=1",
+                    f"CLIENTS_NUMBER={clients}"
                 ],
                 "volumes": [
                     "./server/config.ini:/server/config.ini:rw"

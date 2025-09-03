@@ -153,7 +153,7 @@ func main() {
 
 	PrintConfig(v)
 
-	// time.Sleep(10 * time.Second)
+	// time.Sleep(5 * time.Second)
 	clientConfig := getClientConfig(v)
 	client := common.NewClient(clientConfig)
 

@@ -2,18 +2,22 @@ import csv
 import socket
 import logging
 
-from common.utils import Bet, store_bets
+from common.utils import Bet, has_won, load_bets, store_bets
 from common.communication import Communication, accept_new_connection, send_message
 from common.communicationUtils import decode_message, encode_message
 
 
 class Server:
-    def __init__(self, port, listen_backlog):
+    def __init__(self, port, listen_backlog, clients_number):
         # Initialize server socket
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
         self._client_connections = {}
+        self._clients_list = []
+        self._confirmation_count = 0
+        self._clients_number = clients_number
+        self._current_clients_number = 0
 
     def run(self):
         """
@@ -23,19 +27,33 @@ class Server:
         communication with a client. After client with communucation
         finishes, servers starts to accept new connections again
         """
+        while self._current_clients_number < self._clients_number:
+            client_sock, addr = accept_new_connection(self._server_socket)
+            self._clients_list.append(client_sock)
+            self._current_clients_number += 1
 
-        # TODO: Modify this program to handle signal to graceful shutdown
-        # the server
-        while True:
-            client_sock = accept_new_connection(self._server_socket)
+        for client_sock in self._clients_list:
             self.__handle_client_connection(client_sock)
+        
+        for bet in load_bets():
+            if has_won(bet):
+                logging.info(f"action: winner_found | result: success | winner: {bet.first_name} {bet.last_name} | number: {bet.number} | client_id: {bet.agency}")
+                # Notificar los ganadores a través de su conexión guardada
 
-    def __store_bets_and_finish(self, client_sock):
-        logging.info("action: receive_fin | result: success")
-        response = "ACK_FIN\n"
-        client_sock.sendall(response.encode())
-        logging.info("action: send_ack_fin | result: success")
+                if bet.agency in self._client_connections.keys():
+                    logging.info(f"action: notify_winner | result: success | client_id: {bet.agency} | winner: {bet.first_name} {bet.last_name} | number: {bet.number}")
+                    response = f"WINNER|{bet.first_name}|{bet.last_name}|{bet.number}\n"
+                    client_socket = self._client_connections[bet.agency]
+                    client_socket.sendall(response.encode())
 
+        for (client_id, client_socket) in self._client_connections.items():
+            response = "ACK_FIN\n"
+            client_socket.sendall(response.encode())
+            logging.info("action: send_ack_fin | result: success")
+            datos_recibidos = client_socket.recv(1024)
+            if "ACK_FIN" in datos_recibidos.decode():
+                client_socket.close()
+                logging.info(f"action: ack_fin_received | result: success | client_id: {client_id}")
 
     def __decode_batch(self, batch_message):
         """
@@ -104,7 +122,7 @@ class Server:
                 client_id = data["CLIENT_ID"]
                 # Agregar conexión si no existe
                 if client_id not in self._client_connections:
-                    self._client_connections[client_id] = client_sock
+                    self._client_connections[int(client_id)] = client_sock
                     logging.info(f"action: client_registered | result: success | client_id: {client_id}")
             
             # Crear objeto Bet y agregarlo a la lista
@@ -141,7 +159,7 @@ class Server:
                     break
                 
                 if msg == "FIN":
-                    self.__store_bets_and_finish(client_sock)
+                    # self.__store_bets_and_finish(client_sock)
                     break
                 
                 # --- LÓGICA DE DECODIFICACIÓN DE BATCH ACTUALIZADA ---
@@ -169,8 +187,7 @@ class Server:
                     logging.info(f"action: send_ack_batch | result: success | bets_received: {len(bets)}")
 
         finally:
-            client_sock.close()
-            logging.info("action: connection_closed | result: success")
+            logging.info("action: finish_loop | result: success")
 
     def stop(self):
         self._server_socket.close()

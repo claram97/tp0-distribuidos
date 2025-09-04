@@ -52,15 +52,10 @@ func (c *Client) SendBet(ctx context.Context) {
         return
     }
 
-    var conn net.Conn
-	var err error	
-	for i := 1; i <= 3; i++ {
-		conn, err = CreateClientSocket(c.config.ServerAddress, c.config.ID)
-		if err == nil {
-			break
-		}
-		log.Warningf("action: create_conn | result: retrying | attempt: %d | client_id: %v | error: %v", i, c.config.ID, err)
-		time.Sleep(2 * time.Second)
+    conn, err := ConnectWithRetry(3, c.config.ID, c.config.ServerAddress)
+	if err != nil {
+		log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return 
 	}
 
 	if err != nil {

@@ -134,7 +134,7 @@ func main() {
 		log.Infof("action: exit | result: success")
 		os.Exit(0)
 	case <-done:
-		log.Infof("action: normal_exit | result: success")
+		log.Infof("action: exit | result: success")
 		if client != nil {
 			client.Close() 
 		}

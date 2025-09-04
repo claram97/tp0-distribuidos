@@ -30,13 +30,6 @@ class Server:
             client_sock = accept_new_connection(self._server_socket)
             self.__handle_client_connection(client_sock)
 
-    def __store_bets_and_finish(self, client_sock):
-        logging.info("action: receive_fin | result: success")
-        response = "ACK_FIN\n"
-        client_sock.sendall(response.encode())
-        logging.info("action: send_ack_fin | result: success")
-
-
     def __decode_batch(self, batch_message):
         """
         Decodifica y valida un lote completo (batch).

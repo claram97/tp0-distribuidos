@@ -37,33 +37,33 @@ func NewClient(config ClientConfig) *Client {
 }
 
 func (c *Client) StartClientLoop(ctx context.Context) {
-    for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-        select {
-        case <-ctx.Done():
-            log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
-            return
-        default:
-            conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
-            if err != nil {
-                return
-            }
-            c.conn = conn
+    msgID := 1
+	select {
+	case <-ctx.Done():
+		log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
+		return
+	default:
+		conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
+		if err != nil {
+			return
+		}
+		c.conn = conn
 
-            if err := c.handleMessage(msgID); err != nil {
-                log.Errorf("action: client_loop | result: fail | client_id: %v | error: %v", c.config.ID, err)
-                c.conn = nil
-                return
-            }
+		if err := c.handleMessage(msgID); err != nil {
+			log.Errorf("action: client_loop | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			c.conn = nil
+			return
+		}
 
-            select {
-            case <-ctx.Done():
-                log.Infof("action: loop_interrupted | result: sigterm | client_id: %v", c.config.ID)
-                return
-            case <-time.After(c.config.LoopPeriod):
-            }
-        }
-    }
-    log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+		select {
+		case <-ctx.Done():
+			log.Infof("action: loop_interrupted | result: sigterm | client_id: %v", c.config.ID)
+			return
+		case <-time.After(c.config.LoopPeriod):
+		}
+	}
+
+    log.Infof("action: message_sent | result: success | client_id: %v", c.config.ID)
 }
 
 func (c *Client) handleMessage(msgID int) error {

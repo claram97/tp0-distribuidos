@@ -96,10 +96,11 @@ func PrintConfig(v *viper.Viper) {
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
-
-	done := make(chan struct{}) // canal que indica que el loop terminó
+	done := make(chan struct{})
 
 	var client *common.Client 
+	defer client.Close()
+
 	go func() {
 		v, err := InitConfig()
 		if err != nil {
@@ -121,19 +122,22 @@ func main() {
 
 		client = common.NewClient(clientConfig)
 
-		// Pasamos el ctx al loop
 		client.StartClientLoop(ctx)
 		close(done)
 	}()
 
 	select {
-	case <-ctx.Done(): // recibió SIGTERM
-		log.Infof("action: exit | result: success")
-	case <-done: // terminó de enviar/recibir todos los mensajes
-		log.Infof("action: exit | result: success")
-	}
-
-	if client != nil {
-		client.Close() 
+	case <-ctx.Done(): 
+		if client != nil {
+			client.Close() 
+		}
+		log.Infof("action: exit | result: success | reason: sigterm_received")
+		os.Exit(0)
+	case <-done:
+		log.Infof("action: normal_exit | result: success | reason: loop_completed")
+		if client != nil {
+			client.Close() 
+		}
+		os.Exit(0)
 	}
 }

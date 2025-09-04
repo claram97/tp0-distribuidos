@@ -53,10 +53,7 @@ func (c *Client) createClientSocket() error {
 
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop(ctx context.Context) {
-	// There is an autoincremental msgID to identify every message sent
-	// Messages if the message amount threshold has not been surpassed
 	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		// Revisamos si hubo cancelación antes de cada mensaje
 		select {
 		case <-ctx.Done():
 			log.Infof("action: loop_interrupted | result: sigterm_received | client_id: %v", c.config.ID)
@@ -64,7 +61,6 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 		default:
 		}
 
-		// Create the connection the server in every loop iteration. Send an
 		c.createClientSocket()
 
 		// TODO: Modify the send to avoid short-write
@@ -91,7 +87,6 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 			msg,
 		)
 
-		// Esperamos o nos interrumpen durante el sleep
 		select {
 		case <-ctx.Done():
 			log.Infof("action: loop_interrupted_during_sleep | result: sigterm_received | client_id: %v", c.config.ID)

@@ -140,4 +140,6 @@ func main() {
     case <-done:
         log.Infof("action: exit | result: success")
     }
+
+	os.Exit(0)
 }

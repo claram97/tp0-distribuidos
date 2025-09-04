@@ -27,7 +27,7 @@ class Server:
         finishes, servers starts to accept new connections again
         """
         while self._current_clients_number < self._clients_number:
-            client_sock, = accept_new_connection(self._server_socket)
+            client_sock = accept_new_connection(self._server_socket)
             self._clients_list.append(client_sock)
             self._current_clients_number += 1
 

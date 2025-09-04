@@ -187,7 +187,7 @@ func initClient() *common.Client {
 }
 
 func runClient(ctx context.Context, client *common.Client) {
-    client.StartClientLoop(ctx)
+    client.SendMessage(ctx)
 }
 
 func main() {
@@ -205,10 +205,10 @@ func main() {
 
 	select {
 	case <-done:
-		log.Infof("action: client_finished | result: success | client_id: %s", clientConfig.ID)
+		log.Infof("action: exit | result: success")
+		os.Exit(0)
 	case <-ctx.Done():
-		log.Infof("action: sigterm_received | result: exiting | client_id: %s", clientConfig.ID)
+		log.Infof("action: exit | result: success")
+		os.Exit(0)
 	}
-
-	os.Exit(0)
 }

@@ -50,10 +50,14 @@ class Server:
             response = "ACK_FIN\n"
             Connection(client_socket).send_message(response.encode())
             logging.info("action: send_ack_fin | result: success")
-            datos_recibidos = client_socket.recv(1024)
-            if "ACK_FIN" in datos_recibidos.decode():
+            datos_recibidos, error = Connection(client_socket).read_message()
+            if error is not None:
+                logging.error(f"action: receive_ack_fin | result: fail | error: {error} | client_id: {client_id}")
+            elif "ACK_FIN" in datos_recibidos:
                 client_socket.close()
                 logging.info(f"action: ack_fin_received | result: success | client_id: {client_id}")
+            elif datos_recibidos is None:
+                logging.info(f"action: client_disconnected_unexpectedly | result: success | client_id: {client_id}")
 
     def __handle_client_connection(self, client_sock):
         """

@@ -4,7 +4,7 @@ import threading
 
 from common.utils import Bet, has_won, load_bets, store_bets
 from common.communication import Communication, accept_new_connection, send_message
-from common.communicationUtils import decode_batch, decode_message, encode_message
+from common.communicationUtils import decode_batch, decode_bets_in_batch, decode_message, encode_message
 
 
 class Server:
@@ -49,48 +49,6 @@ class Server:
         if "ACK_FIN" in datos_recibidos.decode():
             client_socket.close()
             logging.info(f"action: ack_fin_received | result: success | client_id: {client_id}")
-        
-    def __decode_and_store_bets(self, bets, client_sock):
-        valid_bets = []
-        client_id = None
-        
-        for idx, bet in enumerate(bets):
-            if not bet: # Saltear strings vacíos si los hubiera
-                continue
-            status, info, data = decode_message(bet)
-            if status != "success":
-                if "longitud del mensaje recibido no es correcta" in info:
-                    logging.error(f"action: invalid_length | result: fail | batch_index: {idx} | raw_bet: '{bet}' | detalle: {info}")
-                logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: {info} | raw_bet: '{bet}'")
-                return f"decode_error: {info}"
-            if data is None:
-                logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: data is None | raw_bet: '{bet}'")
-                return "decode_error: data is None"
-            
-            # Extraer CLIENT_ID de la primera apuesta válida
-            if client_id is None:
-                client_id = data["CLIENT_ID"]
-                # Agregar conexión si no existe
-                if client_id not in self._client_connections:
-                    self._client_connections[int(client_id)] = client_sock
-                    logging.info(f"action: client_registered | result: success | client_id: {client_id}")
-            
-            # Crear objeto Bet y agregarlo a la lista
-            bet_obj = Bet(
-                agency=data["CLIENT_ID"],
-                first_name=data["NOMBRE"],
-                last_name=data["APELLIDO"],
-                document=data["DOCUMENTO"],
-                birthdate=data["NACIMIENTO"],
-                number=data["NUMERO"]
-            )
-            valid_bets.append(bet_obj)
-        
-        # Almacenar todas las apuestas válidas del batch
-        if valid_bets:
-            store_bets(valid_bets)
-        
-        return None
 
     def __handle_client_connection(self, client_sock):
         """
@@ -128,9 +86,9 @@ class Server:
                 if batch_error:
                     logging.error(f"action: decode_batch | result: fail | error: {batch_error}")
                     break
-                
-                decode_error = self.__decode_and_store_bets(bets, client_sock)
-                
+
+                decode_error = decode_bets_in_batch(bets, client_sock, self._client_connections)
+
                 if decode_error:
                     # Hubo error al decodificar una apuesta dentro del lote
                     logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")

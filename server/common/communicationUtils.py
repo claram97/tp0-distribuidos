@@ -1,6 +1,6 @@
 import logging
 
-from common.utils import Bet
+from common.utils import Bet, store_bets
 
 
 def parse_message(splitted_msg):
@@ -127,45 +127,43 @@ def decode_batch(batch_message):
         return None, f"Error inesperado al decodificar el batch: {e}"
 
 def decode_bets_in_batch(bets, client_sock, client_connections):
-    """
-    Decodifica un batch de apuestas y devuelve la lista de Bet válidas.
-    Si alguna apuesta es inválida, retorna el motivo.
-    """
-    valid_bets = []
-    client_id = None
-
-    for idx, bet in enumerate(bets):
-        if not bet:
-            continue
-
-        status, info, data = decode_message(bet)
-        if status != "success":
-            if "longitud del mensaje recibido no es correcta" in info:
-                logging.error(
-                    f"action: invalid_length | result: fail | batch_index: {idx} "
-                    f"| raw_bet: '{bet}' | detalle: {info}"
-                )
-            return None, f"decode_error: {info}"
-
-        if data is None:
-            return None, f"decode_error: data is None | raw_bet: '{bet}'"
-
-        # Registrar client_id si es la primera apuesta válida
-        if client_id is None:
-            client_id = data["CLIENT_ID"]
-            if client_id not in client_connections:
-                client_connections[int(client_id)] = client_sock
-                logging.info(f"action: client_registered | result: success | client_id: {client_id}")
-
-        # Crear objeto Bet
-        bet_obj = Bet(
-            agency=data["CLIENT_ID"],
-            first_name=data["NOMBRE"],
-            last_name=data["APELLIDO"],
-            document=data["DOCUMENTO"],
-            birthdate=data["NACIMIENTO"],
-            number=data["NUMERO"]
-        )
-        valid_bets.append(bet_obj)
-
-    return valid_bets, None
+	valid_bets = []
+	client_id = None
+	
+	for idx, bet in enumerate(bets):
+		if not bet: # Saltear strings vacíos si los hubiera
+			continue
+		status, info, data = decode_message(bet)
+		if status != "success":
+			if "longitud del mensaje recibido no es correcta" in info:
+				logging.error(f"action: invalid_length | result: fail | batch_index: {idx} | raw_bet: '{bet}' | detalle: {info}")
+			logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: {info} | raw_bet: '{bet}'")
+			return f"decode_error: {info}"
+		if data is None:
+			logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: data is None | raw_bet: '{bet}'")
+			return "decode_error: data is None"
+		
+		# Extraer CLIENT_ID de la primera apuesta válida
+		if client_id is None:
+			client_id = data["CLIENT_ID"]
+			# Agregar conexión si no existe
+			if client_id not in client_connections:
+				client_connections[int(client_id)] = client_sock
+				logging.info(f"action: client_registered | result: success | client_id: {client_id}")
+		
+		# Crear objeto Bet y agregarlo a la lista
+		bet_obj = Bet(
+			agency=data["CLIENT_ID"],
+			first_name=data["NOMBRE"],
+			last_name=data["APELLIDO"],
+			document=data["DOCUMENTO"],
+			birthdate=data["NACIMIENTO"],
+			number=data["NUMERO"]
+		)
+		valid_bets.append(bet_obj)
+	
+	# Almacenar todas las apuestas válidas del batch
+	if valid_bets:
+		store_bets(valid_bets)
+	
+	return None

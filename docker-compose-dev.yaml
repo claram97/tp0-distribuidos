@@ -5,30 +5,28 @@ services:
     image: server:latest
     entrypoint: python3 /main.py
     environment:
-      - PYTHONUNBUFFERED=1
+    - PYTHONUNBUFFERED=1
     volumes:
-      - ./server/config.ini:/server/config.ini:rw
+    - ./server/config.ini:/server/config.ini:ro
     networks:
-      - testing_net
-
+    - testing_net
   client1:
     container_name: client1
     image: client:latest
     entrypoint: /client
     environment:
-      - CLI_ID=1
+    - CLI_ID=1
     env_file:
-      - client.env
-    networks:
-      - testing_net
+    - client.env
     volumes:
-      - ./client/config.yaml:/config.yaml:rw
+    - ./client/config.yaml:/config.yaml:ro
+    networks:
+    - testing_net
     depends_on:
-      - server
-
+    - server
 networks:
   testing_net:
     ipam:
       driver: default
       config:
-        - subnet: 172.25.125.0/24
+      - subnet: 172.25.125.0/24

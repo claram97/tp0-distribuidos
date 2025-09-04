@@ -2,88 +2,168 @@ package common
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
+	"os"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("log")
 
-// ClientConfig Configuration used by the client
-type ClientConfig struct {
-	ID            string
-	ServerAddress string
-	LoopAmount    int
-	LoopPeriod    time.Duration
+type BetData struct {
+	Nombre     string
+	Apellido   string
+	Documento  string
+	Nacimiento string
+	Numero     string
 }
 
-// Client Entity that encapsulates how
+type ClientConfig struct {
+	ID             string
+	ServerAddress  string
+	LoopAmount     int
+	LoopPeriod     time.Duration
+	BatchMaxAmount int
+}
+
 type Client struct {
 	config ClientConfig
 	conn   net.Conn
 }
 
-// NewClient Initializes a new client receiving the configuration
-// as a parameter
 func NewClient(config ClientConfig) *Client {
-	client := &Client{
-		config: config,
-	}
-	return client
+	return &Client{config: config}
 }
 
-// CreateClientSocket Initializes client socket. In case of
-// failure, error is printed in stdout/stderr and exit 1
-// is returned
-func (c *Client) createClientSocket() error {
-	conn, err := net.Dial("tcp", c.config.ServerAddress)
-	if err != nil {
-		log.Criticalf(
-			"action: connect | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			err,
-		)
+
+// buildBatch construye el contenido de un batch y devuelve el string listo para enviar.
+func buildBatch(messages []string, footer string) string {
+	batchContent := strings.Join(messages, "") + footer
+	batchLen := utf8.RuneCountInString(batchContent)
+	return fmt.Sprintf("BATCH_LEN=%d|%s", batchLen, batchContent)
+}
+
+// sendBatch envía un batch y espera la respuesta del servidor.
+func sendBatch(conn net.Conn, reader *bufio.Reader, batch string, clientID string, isFinal bool) error {
+	action := "batch_sent"
+	if isFinal {
+		action = "final_batch_sent"
 	}
-	c.conn = conn
+
+	if err := SendMessage(conn, batch, clientID); err != nil {
+		log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v", clientID, err)
+		return fmt.Errorf("send_batch_error: %w", err)
+	}
+	log.Infof("action: %s | result: success | client_id: %v", action, clientID)
+
+	if err := ReadResponse(reader, clientID); err != nil {
+		log.Errorf("action: batch_ack | result: fail | client_id: %v | error: %v", clientID, err)
+		return fmt.Errorf("batch_error: %w", err)
+	}
 	return nil
 }
 
-// StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
-	// There is an autoincremental msgID to identify every message sent
-	// Messages if the message amount threshold has not been surpassed
-	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		// Create the connection the server in every loop iteration. Send an
-		c.createClientSocket()
+func ReadResponse(reader *bufio.Reader, clientID string) error {
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
+		return err
+	}
 
-		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"[CLIENT %v] Message N°%v\n",
-			c.config.ID,
-			msgID,
-		)
-		msg, err := bufio.NewReader(c.conn).ReadString('\n')
-		c.conn.Close()
+	trimmedResponse := strings.TrimSpace(response)
+	log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
+	if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
+		return fmt.Errorf("server returned batch error")
+	}
+	return nil
+}
 
-		if err != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
-			)
-			return
+func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error {
+	conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
+	if err != nil {
+		return fmt.Errorf("connection_error: %w", err)
+	}
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+	scanner := bufio.NewScanner(agencyFile)
+
+	messages := make([]string, 0, 100)
+	batchSize := 0
+	footer := "|END_BATCH\n"
+	msgID := 1
+
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			log.Infof("action: exit | result: sigterm | client_id: %v", c.config.ID)
+			return fmt.Errorf("context_cancelled")
+		default:
 		}
 
-		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-			c.config.ID,
-			msg,
-		)
+		line := scanner.Text()
+		data := strings.Split(line, ",")
+		if len(data) != 5 {
+			log.Errorf("action: parse_line | result: fail | line: %s", line)
+			continue
+		}
 
-		// Wait a time between sending one message and the next one
-		time.Sleep(c.config.LoopPeriod)
+		betData := BetData{
+			Nombre: data[0], Apellido: data[1], Documento: data[2],
+			Nacimiento: data[3], Numero: data[4],
+		}
+		msg := ParsedMessage(betData, c.config.ID, msgID) + ":"
+		msgBytes := len([]byte(msg))
+		tentativeSize := batchSize + msgBytes + len([]byte(footer))
 
+		// Flush si llegamos a los límites
+		if tentativeSize >= 8192 || len(messages) == c.config.BatchMaxAmount {
+			batch := buildBatch(messages, footer)
+			if err := sendBatch(conn, reader, batch, c.config.ID, false); err != nil {
+				return err
+			}
+			messages = messages[:0]
+			batchSize = 0
+		}
+
+		messages = append(messages, msg)
+		batchSize += msgBytes
+		msgID++
 	}
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+
+	// Enviar batch final si queda algo
+	if len(messages) > 0 {
+		batch := buildBatch(messages, footer)
+		if err := sendBatch(conn, reader, batch, c.config.ID, true); err != nil {
+			return err
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Errorf("action: scanner_error | result: fail | client_id: %v | error: %v", c.config.ID, err)
+	}
+
+	// FIN protocol
+	if err := SendMessage(conn, "FIN\n", c.config.ID); err != nil {
+		return fmt.Errorf("send_fin_error: %w", err)
+	}
+	if err := ReadResponse(reader, c.config.ID); err != nil {
+		return fmt.Errorf("fin_response_error: %w", err)
+	}
+
+	log.Infof("action: all_batches_sent_and_acked | result: success | client_id: %v", c.config.ID)
+	return nil
+}
+
+func (c *Client) Close() {
+	if c.conn != nil {
+		c.conn.Close()
+		log.Info("action: client_conn_closed | result: success")
+		c.conn = nil
+	}
 }

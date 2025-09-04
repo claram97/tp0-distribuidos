@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
@@ -14,6 +18,15 @@ import (
 )
 
 var log = logging.MustGetLogger("log")
+
+func isAlpha(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLetter(r) && r != ' ' {
+			return false
+		}
+	}
+	return true
+}
 
 // InitConfig Function that uses viper library to parse configuration parameters.
 // Viper is configured to read variables from both environment variables and the
@@ -34,6 +47,7 @@ func InitConfig() (*viper.Viper, error) {
 	// Add env variables supported
 	v.BindEnv("id")
 	v.BindEnv("server", "address")
+	v.BindEnv("batch", "maxAmount")
 	v.BindEnv("loop", "period")
 	v.BindEnv("loop", "amount")
 	v.BindEnv("log", "level")
@@ -48,9 +62,28 @@ func InitConfig() (*viper.Viper, error) {
 	}
 
 	// Parse time.Duration variables and return an error if those variables cannot be parsed
-
 	if _, err := time.ParseDuration(v.GetString("loop.period")); err != nil {
 		return nil, errors.Wrapf(err, "Could not parse CLI_LOOP_PERIOD env var as time.Duration.")
+	}
+
+	// Validate that batch max amount is positive
+	if v.GetInt("batch.maxAmount") <= 0 {
+		return nil, errors.New("CLI_BATCH_MAXAMOUNT env var must be a positive integer.")
+	}
+
+	// Validate that loop amount is positive
+	if v.GetInt("loop.amount") <= 0 {
+		return nil, errors.New("CLI_LOOP_AMOUNT env var must be a positive integer.")
+	}
+
+	// Validate that ID is not empty
+	if v.GetString("id") == "" {
+		return nil, errors.New("CLI_ID env var must be set and non empty.")
+	}
+
+	// Validate that server address is not empty
+	if v.GetString("server.address") == "" {
+		return nil, errors.New("CLI_SERVER_ADDRESS env var must be set and non empty.")
 	}
 
 	return v, nil
@@ -81,35 +114,96 @@ func InitLogger(logLevel string) error {
 // PrintConfig Print all the configuration parameters of the program.
 // For debugging purposes only
 func PrintConfig(v *viper.Viper) {
-	log.Infof("action: config | result: success | client_id: %s | server_address: %s | loop_amount: %v | loop_period: %v | log_level: %s",
+	log.Infof(
+		"action: config | result: success | client_id: %s | server_address: %s | batch_max_amount : %v | loop_amount: %v | loop_period: %v | log_level: %s",
 		v.GetString("id"),
 		v.GetString("server.address"),
+		v.GetInt("batch.maxAmount"),
 		v.GetInt("loop.amount"),
 		v.GetDuration("loop.period"),
 		v.GetString("log.level"),
 	)
 }
 
+func getClientConfig(v *viper.Viper) common.ClientConfig {
+
+	return common.ClientConfig{
+		ServerAddress:  v.GetString("server.address"),
+		ID:             v.GetString("id"),
+		LoopAmount:     v.GetInt("loop.amount"),
+		LoopPeriod:     v.GetDuration("loop.period"),
+		BatchMaxAmount: v.GetInt("batch.maxAmount"),
+	}
+}
+
 func main() {
-	v, err := InitConfig()
-	if err != nil {
-		log.Criticalf("%s", err)
-	}
+    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+    defer stop()
 
-	if err := InitLogger(v.GetString("log.level")); err != nil {
-		log.Criticalf("%s", err)
-	}
+    clientConfig, err := setupConfigAndLogger()
+    if err != nil {
+        os.Exit(1)
+    }
 
-	// Print program config with debugging purposes
-	PrintConfig(v)
+    file, err := openAgencyFile(clientConfig.ID)
+    if err != nil {
+        log.Errorf("action: file_open | result: fail | client_id: %s | error: %v", clientConfig.ID, err)
+        os.Exit(1)
+    }
+    defer file.Close()
 
-	clientConfig := common.ClientConfig{
-		ServerAddress: v.GetString("server.address"),
-		ID:            v.GetString("id"),
-		LoopAmount:    v.GetInt("loop.amount"),
-		LoopPeriod:    v.GetDuration("loop.period"),
-	}
+    client := common.NewClient(clientConfig)
+    done := make(chan struct{})
+    var clientErr error
 
-	client := common.NewClient(clientConfig)
-	client.StartClientLoop()
+    go func() {
+        clientErr = client.StartClientLoop(ctx, file)
+        close(done)
+    }()
+
+    handleExit(done, ctx, clientErr, client, file, clientConfig.ID)
+}
+
+func setupConfigAndLogger() (common.ClientConfig, error) {
+    v, err := InitConfig()
+    if err != nil {
+        log.Criticalf("%s", err)
+        return common.ClientConfig{}, err
+    }
+
+    if err := InitLogger(v.GetString("log.level")); err != nil {
+        log.Criticalf("%s", err)
+        return common.ClientConfig{}, err
+    }
+
+    PrintConfig(v)
+    return getClientConfig(v), nil
+}
+
+func openAgencyFile(clientID string) (*os.File, error) {
+    fileName := fmt.Sprintf("../data/agency-%s.csv", clientID)
+    return os.Open(fileName)
+}
+
+func handleExit(done <-chan struct{}, ctx context.Context, clientErr error, client *common.Client, file *os.File, clientID string) {
+    select {
+    case <-done:
+        if clientErr != nil {
+            log.Errorf("action: client_finished | result: fail | client_id: %s | error: %v", clientID, clientErr)
+            file.Close()
+            client.Close()
+            if strings.Contains(clientErr.Error(), "batch_error") || strings.Contains(clientErr.Error(), "final_batch_error") {
+                os.Exit(2)
+            } else if strings.Contains(clientErr.Error(), "connection_error") {
+                os.Exit(3)
+            } else {
+                os.Exit(1)
+            }
+        }
+        log.Infof("action: exit | result: success")
+    case <-ctx.Done():
+        log.Infof("action: exit | result: success")
+    }
+    client.Close()
+    os.Exit(0)
 }

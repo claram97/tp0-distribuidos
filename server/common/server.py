@@ -1,5 +1,10 @@
+import csv
 import socket
 import logging
+
+from common.utils import Bet, store_bets
+from common.communication import Connection, accept_new_connection
+from common.communicationUtils import decode_batch, decode_bets_in_batch, decode_message, encode_message
 
 
 class Server:
@@ -8,6 +13,7 @@ class Server:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
+        self._client_connections = {}
 
     def run(self):
         """
@@ -21,38 +27,64 @@ class Server:
         # TODO: Modify this program to handle signal to graceful shutdown
         # the server
         while True:
-            client_sock = self.__accept_new_connection()
+            client_sock = accept_new_connection(self._server_socket)
             self.__handle_client_connection(client_sock)
 
     def __handle_client_connection(self, client_sock):
         """
-        Read message from a specific client socket and closes the socket
-
-        If a problem arises in the communication with the client, the
-        client socket will also be closed
+        Mantiene la conexión con un cliente usando la clase Connection.
         """
+        reader = Connection(client_sock)
+
         try:
-            # TODO: Modify the receive to avoid short-reads
-            msg = client_sock.recv(1024).rstrip().decode('utf-8')
-            addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
-            # TODO: Modify the send to avoid short-writes
-            client_sock.send("{}\n".format(msg).encode('utf-8'))
-        except OSError as e:
-            logging.error("action: receive_message | result: fail | error: {e}")
+            while True:
+                msg, err = reader.read_message()
+                if err:
+                    logging.error(f"action: receive_message | result: fail | error: {err}")
+                    break
+                if msg is None:
+                    logging.info("action: client_disconnected_unexpectedly | result: success")
+                    break
+
+                if msg == "FIN":
+                    response = "ACK_FIN\n".encode()
+                    reader.send_message(response)
+                    logging.info("action: send_ack_fin | result: success")
+                    break
+
+                # Decodificar batch
+                bets, batch_error = decode_batch(msg)
+                if batch_error:
+                    logging.error(f"action: decode_batch | result: fail | error: {batch_error}")
+                    reader.send_message("BATCH_ERROR\n".encode())
+                    break
+
+                valid_bets, decode_error = decode_bets_in_batch(bets, client_sock, self._client_connections)
+                if decode_error:
+                    logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")
+                    reader.send_message("BATCH_ERROR\n".encode())
+                    logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
+                    break
+
+                if valid_bets:
+                    store_bets(valid_bets)
+
+                logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(valid_bets)}")
+                reader.send_message("ACK_BATCH\n".encode())
+                logging.info(f"action: send_ack_batch | result: success | bets_received: {len(valid_bets)}")
+
+
         finally:
-            client_sock.close()
+            reader.close()
+            logging.info("action: connection_closed | result: success")
 
-    def __accept_new_connection(self):
-        """
-        Accept new connections
 
-        Function blocks until a connection to a client is made.
-        Then connection created is printed and returned
-        """
+    def stop(self):
+        self._server_socket.close()
+        for client_socket in self._client_connections.values():
+            client_socket.close()
+            logging.info("action: exit | result: success")
 
-        # Connection arrived
-        logging.info('action: accept_connections | result: in_progress')
-        c, addr = self._server_socket.accept()
-        logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
-        return c
+        self._client_connections.clear()
+        logging.info("action: exit | result: success")
+

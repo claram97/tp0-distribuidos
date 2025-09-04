@@ -7,7 +7,10 @@ import (
 	"unicode/utf8"
 )
 
-func ParsedMessage(data BetData, clientID string, msgID int) string {
+const Footer = "|END_BATCH\n"
+const ClientDataFieldsNumber = 5 // NOMBRE, APELLIDO, DOCUMENTO, NACIMIENTO, NUMERO
+
+func EncodedBet(data BetData, clientID string, msgID int) string {
 	dataStr := fmt.Sprintf(
 		"NOMBRE=%v|APELLIDO=%v|DOCUMENTO=%v|NACIMIENTO=%v|NUMERO=%v|CLIENT_ID=%v|Message N°=%v|END",
 		data.Nombre,

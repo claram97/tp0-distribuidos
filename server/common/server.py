@@ -52,7 +52,6 @@ class Server:
                     logging.info("action: send_ack_fin | result: success")
                     break
 
-                # Decodificar batch
                 bets, batch_error = decode_batch(msg)
                 if batch_error:
                     logging.error(f"action: decode_batch | result: fail | error: {batch_error}")

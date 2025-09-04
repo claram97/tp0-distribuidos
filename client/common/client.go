@@ -36,6 +36,8 @@ type Client struct {
 	conn   net.Conn
 }
 
+const betsSeparator = ":"
+
 func NewClient(config ClientConfig) *Client {
 	return &Client{config: config}
 }
@@ -102,7 +104,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 
 	messages := make([]string, 0, 100)
 	batchSize := 0
-	footer := "|END_BATCH\n"
+	footer := Footer
 	msgID := 1
 
 	for scanner.Scan() {
@@ -115,7 +117,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 
 		line := scanner.Text()
 		data := strings.Split(line, ",")
-		if len(data) != 5 {
+		if len(data) != ClientDataFieldsNumber {
 			log.Errorf("action: parse_line | result: fail | line: %s", line)
 			continue
 		}
@@ -124,7 +126,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 			Nombre: data[0], Apellido: data[1], Documento: data[2],
 			Nacimiento: data[3], Numero: data[4],
 		}
-		msg := ParsedMessage(betData, c.config.ID, msgID) + ":"
+		msg := EncodedBet(betData, c.config.ID, msgID) + betsSeparator
 		msgBytes := len([]byte(msg))
 		tentativeSize := batchSize + msgBytes + len([]byte(footer))
 
@@ -155,7 +157,6 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 		log.Errorf("action: scanner_error | result: fail | client_id: %v | error: %v", c.config.ID, err)
 	}
 
-	// FIN protocol
 	if err := SendMessage(conn, "FIN\n", c.config.ID); err != nil {
 		return fmt.Errorf("send_fin_error: %w", err)
 	}

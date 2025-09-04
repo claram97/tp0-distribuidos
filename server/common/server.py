@@ -58,8 +58,14 @@ class Server:
         response = "ACK_FIN\n"
         Connection(client_socket).send_message(response.encode())
         logging.info("action: send_ack_fin | result: success")
-        datos_recibidos = client_socket.recv(1024)
-        if "ACK_FIN" in datos_recibidos.decode():
+        msg, err = Connection(client_socket).read_message()
+        if err is not None:
+            logging.error(f"action: receive_message | result: fail | error: {err}")
+            return
+        if msg is None:
+            logging.info("action: client_disconnected_unexpectedly | result: success")
+            return
+        if "ACK_FIN" in msg.decode():
             client_socket.close()
             with self._client_connections_lock:
                 if client_id in self._client_connections:

@@ -185,49 +185,72 @@ def decode_batch(batch_message):
     except Exception as e:
         return None, f"Error inesperado al decodificar el batch: {e}"
     
+
+def _create_bet_from_data(data):
+    """
+    Crea un objeto Bet a partir de un diccionario de datos validados.
+    Puede lanzar un KeyError si falta un campo esperado.
+    """
+    return Bet(
+        agency=data["CLIENT_ID"],
+        first_name=data["NOMBRE"],
+        last_name=data["APELLIDO"],
+        document=data["DOCUMENTO"],
+        birthdate=data["NACIMIENTO"],
+        number=data["NUMERO"]
+    )
+
+def _register_client_connection(client_id, client_sock, client_connections, lock):
+    """
+    Registra la conexión de un cliente si no existe, utilizando un lock para seguridad.
+    """
+    with lock:
+        if int(client_id) not in client_connections:
+            client_connections[int(client_id)] = client_sock
+            logging.info(f"action: client_registered | result: success | client_id: {client_id}")
+
+def _store_valid_bets(bets_list, lock):
+    """
+    Almacena una lista de apuestas válidas en el storage, utilizando un lock.
+    """
+    if not bets_list:
+        return
+    with lock:
+        store_bets(bets_list)
+
 def decode_bets_in_batch(bets, client_sock, client_connections, client_connections_lock, bets_lock):
     """
-    Decodifica, valida y procesa una lista de apuestas individuales de un batch,
-    creando objetos Bet y almacenándolos. También registra la conexión del cliente.
+    Decodifica y procesa una lista de apuestas, orquestando la validación,
+    creación de objetos y almacenamiento a través de funciones auxiliares.
     """
     valid_bets = []
-    client_id = None
-    
-    for idx, bet in enumerate(bets):
-        if not bet: 
+    client_id_registered = False
+
+    for idx, bet_string in enumerate(bets):
+        if not bet_string:
             continue
-        status, info, data = decode_message(bet)
+
+        status, info, data = decode_message(bet_string)
         if status != "success":
-            logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: {info} | raw_bet: '{bet}'")
-            return f"decode_error: {info}"
-        
-        if data is None:
-            logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: data is None | raw_bet: '{bet}'")
-            return "decode_error: data is None"
+            logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: {info} | raw_bet: '{bet_string}'")
+            return f"decode_error: {info}" # Detiene el proceso del batch si una apuesta es inválida
 
-        if client_id is None:
+        if not client_id_registered:
             client_id = data.get("CLIENT_ID")
-            if client_id is None:
-                logging.error("action: decode_bet | result: fail | no CLIENT_ID found in data")
-                return "decode_error: no CLIENT_ID"
+            if not client_id:
+                logging.error("action: register_client | result: fail | error: no CLIENT_ID found in first valid bet")
+                return "decode_error: no se encontró CLIENT_ID"
+            
+            _register_client_connection(client_id, client_sock, client_connections, client_connections_lock)
+            client_id_registered = True
 
-            with client_connections_lock:
-                if int(client_id) not in client_connections:
-                    client_connections[int(client_id)] = client_sock
-                    logging.info(f"action: client_registered | result: success | client_id: {client_id}")
-
-        bet_obj = Bet(
-            agency=data["CLIENT_ID"],
-            first_name=data["NOMBRE"],
-            last_name=data["APELLIDO"],
-            document=data["DOCUMENTO"],
-            birthdate=data["NACIMIENTO"],
-            number=data["NUMERO"]
-        )
-        valid_bets.append(bet_obj)
+        try:
+            bet_obj = _create_bet_from_data(data)
+            valid_bets.append(bet_obj)
+        except KeyError as e:
+            logging.error(f"action: create_bet_obj | result: fail | batch_index: {idx} | error: missing key {e} | data: '{data}'")
+            return f"decode_error: campo faltante en los datos ({e})"
     
-    if valid_bets:
-        with bets_lock:
-            store_bets(valid_bets)
+    _store_valid_bets(valid_bets, bets_lock)
     
     return None

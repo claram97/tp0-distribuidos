@@ -100,32 +100,38 @@ class Server:
         except Exception as e:
             return None, f"Error inesperado al decodificar el batch: {e}"
         
-    def __decode_and_store_bets(self, bets, client_sock):
+    def decode_and_collect_bets(self, bets, client_sock):
+        """
+        Decodifica un batch de apuestas y devuelve la lista de Bet válidas.
+        Si alguna apuesta es inválida, lanza un error retornando el motivo.
+        """
         valid_bets = []
         client_id = None
-        
+
         for idx, bet in enumerate(bets):
-            if not bet: # Saltear strings vacíos si los hubiera
+            if not bet:
                 continue
+
             status, info, data = decode_message(bet)
             if status != "success":
                 if "longitud del mensaje recibido no es correcta" in info:
-                    logging.error(f"action: invalid_length | result: fail | batch_index: {idx} | raw_bet: '{bet}' | detalle: {info}")
-                logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: {info} | raw_bet: '{bet}'")
-                return f"decode_error: {info}"
+                    logging.error(
+                        f"action: invalid_length | result: fail | batch_index: {idx} "
+                        f"| raw_bet: '{bet}' | detalle: {info}"
+                    )
+                return None, f"decode_error: {info}"
+
             if data is None:
-                logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: data is None | raw_bet: '{bet}'")
-                return "decode_error: data is None"
-            
-            # Extraer CLIENT_ID de la primera apuesta válida
+                return None, f"decode_error: data is None | raw_bet: '{bet}'"
+
+            # Registrar client_id si es la primera apuesta válida
             if client_id is None:
                 client_id = data["CLIENT_ID"]
-                # Agregar conexión si no existe
                 if client_id not in self._client_connections:
                     self._client_connections[int(client_id)] = client_sock
                     logging.info(f"action: client_registered | result: success | client_id: {client_id}")
-            
-            # Crear objeto Bet y agregarlo a la lista
+
+            # Crear objeto Bet
             bet_obj = Bet(
                 agency=data["CLIENT_ID"],
                 first_name=data["NOMBRE"],
@@ -135,12 +141,9 @@ class Server:
                 number=data["NUMERO"]
             )
             valid_bets.append(bet_obj)
-        
-        # Almacenar todas las apuestas válidas del batch
-        if valid_bets:
-            store_bets(valid_bets)
-        
-        return None
+
+        return valid_bets, None
+
 
     def __handle_client_connection(self, client_sock):
         """
@@ -164,27 +167,24 @@ class Server:
                 
                 # --- LÓGICA DE DECODIFICACIÓN DE BATCH ACTUALIZADA ---
                 bets, batch_error = decode_batch(msg)
-                
                 if batch_error:
                     logging.error(f"action: decode_batch | result: fail | error: {batch_error}")
                     break
-                
-                decode_error = self.__decode_and_store_bets(bets, client_sock)
-                
+
+                valid_bets, decode_error = self.decode_and_collect_bets(bets, client_sock)
                 if decode_error:
-                    # Hubo error al decodificar una apuesta dentro del lote
                     logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")
-                    response = "BATCH_ERROR\n"
-                    client_sock.sendall(response.encode())
+                    client_sock.sendall("BATCH_ERROR\n".encode())
                     logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
                     break
-                else:
-                    # Todo el lote se procesó correctamente
-                    logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
-                    logging.info(f"action: batch_processed | result: success | bets_received: {len(bets)}")
-                    response = "ACK_BATCH\n"
-                    client_sock.sendall(response.encode())
-                    logging.info(f"action: send_ack_batch | result: success | bets_received: {len(bets)}")
+
+                # Solo si todo se decodificó bien, almacenamos las apuestas
+                if valid_bets:
+                    store_bets(valid_bets)
+
+                logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(valid_bets)}")
+                client_sock.sendall("ACK_BATCH\n".encode())
+                logging.info(f"action: send_ack_batch | result: success | bets_received: {len(valid_bets)}")
 
         finally:
             logging.info("action: finish_loop | result: success")

@@ -59,17 +59,20 @@ class Server:
                     conn.send_message("BATCH_ERROR\n".encode())
                     break
 
-                try:
-                    valid_bets = decode_bets_in_batch(bets, conn.sock, self._client_connections)
-                    if valid_bets:
-                        store_bets(valid_bets)
-                        logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(valid_bets)}")
-                        conn.send_message("ACK_BATCH\n".encode())
-                        logging.info(f"action: send_ack_batch | result: success | bets_received: {len(valid_bets)}")
-                except ValueError as e:
-                    logging.error(f"action: decode_and_store_bets | result: fail | reason: {e}")
+                valid_bets, decode_error = decode_bets_in_batch(bets, client_sock, self._client_connections)
+                if decode_error:
+                    logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")
                     conn.send_message("BATCH_ERROR\n".encode())
+                    logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
                     break
+
+                if valid_bets:
+                    store_bets(valid_bets)
+
+                logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(valid_bets)}")
+                conn.send_message("ACK_BATCH\n".encode())
+                logging.info(f"action: send_ack_batch | result: success | bets_received: {len(valid_bets)}")
+
 
         finally:
             conn.close()

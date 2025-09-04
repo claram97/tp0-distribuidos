@@ -80,7 +80,7 @@ class Server:
         client_id = None
         
         for idx, bet in enumerate(bets):
-            if not bet: # Saltear strings vacíos si los hubiera
+            if not bet: 
                 continue
             status, info, data = decode_message(bet)
             if status != "success":
@@ -92,15 +92,12 @@ class Server:
                 logging.error(f"action: decode_bet | result: fail | batch_index: {idx} | error: data is None | raw_bet: '{bet}'")
                 return "decode_error: data is None"
             
-            # Extraer CLIENT_ID de la primera apuesta válida
             if client_id is None:
                 client_id = data["CLIENT_ID"]
-                # Agregar conexión si no existe
                 if client_id not in self._client_connections:
                     self._client_connections[client_id] = client_sock
                     logging.info(f"action: client_registered | result: success | client_id: {client_id}")
             
-            # Crear objeto Bet y agregarlo a la lista
             bet_obj = Bet(
                 agency=data["CLIENT_ID"],
                 first_name=data["NOMBRE"],
@@ -111,7 +108,6 @@ class Server:
             )
             valid_bets.append(bet_obj)
         
-        # Almacenar todas las apuestas válidas del batch
         if valid_bets:
             store_bets(valid_bets)
         

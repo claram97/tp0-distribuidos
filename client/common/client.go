@@ -58,11 +58,6 @@ func (c *Client) SendBet(ctx context.Context) {
 		return 
 	}
 
-	if err != nil {
-		log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
-		c.conn = nil
-        return
-	}
 	defer conn.Close()
     c.conn = conn
 

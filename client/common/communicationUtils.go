@@ -1,6 +1,8 @@
 package common
 
 import (
+	"bufio"
+	"net"
 	"fmt"
 	"strconv"
 	"strings"
@@ -66,4 +68,26 @@ func parseLenField(field string) (int, error) {
 		return 0, fmt.Errorf("LEN not an integer: %q", parts[1])
 	}
 	return expectedLen, nil
+}
+
+func SendBatch(conn net.Conn, reader *bufio.Reader, messages []string, footer string, clientID string) error {
+	batchContent := strings.Join(messages, "") + footer
+	batchLen := utf8.RuneCountInString(batchContent)
+	batchToSend := fmt.Sprintf("BATCH_LEN=%d|%s", batchLen, batchContent)
+
+	log.Infof("Sending batch (lines %d, characters %d)", len(messages), batchLen)
+
+	if err := SendMessage(conn, batchToSend, clientID); err != nil {
+		log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v", clientID, err)
+		return fmt.Errorf("send_batch_error: %w", err)
+	}
+
+	log.Infof("action: batch_sent | result: success | client_id: %v", clientID)
+
+	if _, err := ReadResponse(reader, clientID); err != nil {
+		log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", clientID, err)
+		return fmt.Errorf("batch_error: %w", err)
+	}
+
+	return nil
 }

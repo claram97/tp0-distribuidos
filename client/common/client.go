@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/op/go-logging"
 )
@@ -38,22 +37,6 @@ type Client struct {
 
 func NewClient(config ClientConfig) *Client {
 	return &Client{config: config}
-}
-
-func ReadResponse(reader *bufio.Reader, clientID string) (string, error) {
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
-		return "", err
-	}
-
-	trimmedResponse := strings.TrimSpace(response)
-
-	if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
-		return trimmedResponse, fmt.Errorf("server returned batch error")
-	}
-
-	return trimmedResponse, nil
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error {
@@ -96,7 +79,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 		tentativeSize := batchSize + msgBytes + len([]byte(footer))
 
 		if tentativeSize >= 8192 || len(messages) == c.config.BatchMaxAmount {
-			if err := sendBatch(conn, reader, messages, footer, c.config.ID); err != nil {
+			if err := SendBatch(conn, reader, messages, footer, c.config.ID); err != nil {
 				return err
 			}
 
@@ -110,7 +93,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 	}
 
 	if len(messages) > 0 {
-		if err := sendBatch(conn, reader, messages, footer, c.config.ID); err != nil {
+		if err := SendBatch(conn, reader, messages, footer, c.config.ID); err != nil {
 			return err
 		}
 	}
@@ -154,28 +137,6 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 	}
 
 	log.Infof("action: client_finished_gracefully | result: success | client_id: %v", c.config.ID)
-	return nil
-}
-
-func sendBatch(conn net.Conn, reader *bufio.Reader, messages []string, footer string, clientID string) error {
-	batchContent := strings.Join(messages, "") + footer
-	batchLen := utf8.RuneCountInString(batchContent)
-	batchToSend := fmt.Sprintf("BATCH_LEN=%d|%s", batchLen, batchContent)
-
-	log.Infof("Sending batch (lines %d, characters %d)", len(messages), batchLen)
-
-	if err := SendMessage(conn, batchToSend, clientID); err != nil {
-		log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v", clientID, err)
-		return fmt.Errorf("send_batch_error: %w", err)
-	}
-
-	log.Infof("action: batch_sent | result: success | client_id: %v", clientID)
-
-	if _, err := ReadResponse(reader, clientID); err != nil {
-		log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", clientID, err)
-		return fmt.Errorf("batch_error: %w", err)
-	}
-
 	return nil
 }
 

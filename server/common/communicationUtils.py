@@ -1,7 +1,5 @@
 import logging
-
 from common.utils import Bet
-
 
 def parse_message(splitted_msg):
     len_str = splitted_msg[0].split('=')[1]

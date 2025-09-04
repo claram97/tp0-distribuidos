@@ -1,7 +1,9 @@
 import socket
 import logging
 import threading
-from collections import defaultdict
+
+# collections.defaultdict ya no es necesario aquí
+# from collections import defaultdict
 
 from common.utils import has_won, load_bets, store_bets
 from common.communication import Connection, accept_new_connection
@@ -16,11 +18,11 @@ class Server:
 
         self._clients_number = clients_number
         self._client_connections = {}
-        self._winner_results = {} 
 
         self._client_connections_lock = threading.Lock()
         self._bets_lock = threading.Lock()
-        self._barrier = threading.Barrier(self._clients_number, action=self._process_winners)
+        
+        self._barrier = threading.Barrier(self._clients_number)
 
 
     def run(self):
@@ -40,38 +42,26 @@ class Server:
         
         logging.info("action: all_clients_finished | result: success | msg: Server shutting down.")
 
-    def _process_winners(self):
-        """
-        Barrier action. This method is called ONLY ONCE after all clients
-        have finished sending their bets. It processes all bets and finds the winners.
-        """
-        logging.info("action: barrier_reached | result: success | msg: All clients finished sending bets. Processing winners.")
-        with self._bets_lock:
-            bets = load_bets()
-
-        winners_by_agency = defaultdict(list)
-        for bet in bets:
-            if has_won(bet):
-                agency_id = int(bet.agency)
-                winner_msg = f"WINNER|{bet.first_name}|{bet.last_name}|{bet.number}\n"
-                winners_by_agency[agency_id].append(winner_msg)
-                logging.info(f"action: winner_found | result: success | client_id: {agency_id} | winner: {bet.first_name} {bet.last_name}")
-
-        self._winner_results = winners_by_agency
-        logging.info("action: processing_winners | result: success")
-
-
     def _send_results_to_client(self, client_id, client_sock):
         """
-        Sends the pre-calculated results to a specific client and handles final ACK.
+        --- MODIFICADO ---
+        Lee el archivo de apuestas completo y envía ("streamea") los resultados
+        que pertenecen a este cliente específico a medida que los encuentra.
         """
         logging.info(f"action: send_results | result: in_progress | client_id: {client_id}")
         
-        winner_messages = self._winner_results.get(client_id, [])
+        with self._bets_lock:
+            bets = load_bets()
 
-        for msg in winner_messages:
-            Connection(client_sock).send_message(msg.encode())
-            logging.info(f"action: notify_winner | result: success | client_id: {client_id}")
+        winners_found = 0
+        for bet in bets:
+            if has_won(bet) and int(bet.agency) == client_id:
+                response = f"WINNER|{bet.first_name}|{bet.last_name}|{bet.number}\n"
+                Connection(client_sock).send_message(response.encode())
+                winners_found += 1
+                logging.info(f"action: notify_winner | result: success | client_id: {client_id}")
+
+        logging.info(f"action: finished_streaming_results | result: success | client_id: {client_id} | winners_sent: {winners_found}")
 
         response = "ACK_FIN\n"
         Connection(client_sock).send_message(response.encode())
@@ -91,8 +81,7 @@ class Server:
 
     def __handle_client_connection(self, client_sock):
         """
-        Handles the connection for a single client, receiving bets until it finishes.
-        Then, it waits at the barrier for all other clients.
+        Handles the connection for a single client. This code remains mostly the same.
         """
         reader = Connection(client_sock)
         client_id = None
@@ -101,7 +90,6 @@ class Server:
             while True:
                 msg, err = reader.read_message()
                 if err or msg is None:
-                    # Si hay un error o desconexión, salimos del bucle.
                     log_msg = "client_disconnected_unexpectedly" if msg is None else "receive_message_error"
                     logging.warning(f"action: {log_msg} | result: fail | client_id: {client_id} | error: {err}")
                     break
@@ -112,7 +100,6 @@ class Server:
                 
                 bets, batch_error = decode_batch(msg)
 
-                # Registrar client_id en la primera comunicación
                 if client_id is None and bets:
                     _, _, data = decode_message(bets[0])
                     if data and "CLIENT_ID" in data:
@@ -149,7 +136,7 @@ class Server:
     
     def stop(self):
         """
-        Stops the server and closes all connections.
+        Stops the server and closes all connections. No changes here.
         """
         try:
             self._server_socket.close()

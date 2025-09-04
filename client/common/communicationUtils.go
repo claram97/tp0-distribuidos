@@ -6,7 +6,9 @@ import (
 	"strconv"
 )
 
-func ParsedMessage(data BetData, clientID string, msgID int) string {
+const SuccessStatus = "success"
+
+func EncodedBet(data BetData, clientID string, msgID int) string {
 	dataStr := fmt.Sprintf(
 		"NOMBRE=%v|APELLIDO=%v|DOCUMENTO=%v|NACIMIENTO=%v|NUMERO=%v|CLIENT_ID=%v|Message N°=%v|END",
 		data.Nombre,
@@ -23,7 +25,7 @@ func ParsedMessage(data BetData, clientID string, msgID int) string {
 // ParseResponse valida y decodifica una respuesta del servidor.
 // Formato esperado: LEN=<n>|STATUS=<status>|INFO=<info>|END
 // Devuelve: status, info, error
-func ParseResponse(response string) (string, string, error) {
+func CheckResponseStatus(response string) (string, string, error) {
     // Dividimos la respuesta en campos separados por '|'
     parts := strings.Split(response, "|")
 

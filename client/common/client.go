@@ -84,9 +84,20 @@ func ReadResponse(reader *bufio.Reader, clientID string) error {
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error {
-	conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
+	var conn net.Conn
+	var err error	
+	for i := 1; i <= 3; i++ {
+		conn, err = CreateClientSocket(c.config.ServerAddress, c.config.ID)
+		if err == nil {
+			break
+		}
+		log.Warningf("action: create_conn | result: retrying | attempt: %d | client_id: %v | error: %v", i, c.config.ID, err)
+		time.Sleep(2 * time.Second)
+	}
+
 	if err != nil {
-		return fmt.Errorf("connection_error: %w", err)
+		log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return fmt.Errorf("connection_error_after_retries: %w", err)
 	}
 	defer conn.Close()
 

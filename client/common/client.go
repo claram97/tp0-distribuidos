@@ -50,6 +50,16 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
+func (c *Client) sendClientMessage(msgID int) error {
+    message := fmt.Sprintf("[CLIENT %v] Message N°%v\n", c.config.ID, msgID)
+    _, err := fmt.Fprintf(c.conn, message)
+    return err
+}
+
+func (c *Client) receiveServerMessage() (string, error) {
+    return bufio.NewReader(c.conn).ReadString('\n')
+}
+
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
 	// There is an autoincremental msgID to identify every message sent
@@ -59,14 +69,18 @@ func (c *Client) StartClientLoop() {
 		c.createClientSocket()
 
 		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"[CLIENT %v] Message N°%v\n",
-			c.config.ID,
-			msgID,
-		)
-		msg, err := bufio.NewReader(c.conn).ReadString('\n')
-		c.conn.Close()
+		 if err := c.sendClientMessage(msgID); err != nil {
+            log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+            c.conn.Close()
+            return
+        }
+
+		msg, err := c.receiveServerMessage()
+        c.conn.Close()
+        if err != nil {
+            log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+            return
+        }
 
 		if err != nil {
 			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
@@ -86,4 +100,11 @@ func (c *Client) StartClientLoop() {
 
 	}
 	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+}
+
+func (c *Client) Close() {
+    if c.conn != nil {
+        c.conn.Close()
+        log.Info("action: client_conn_closed | result: success")
+    }
 }

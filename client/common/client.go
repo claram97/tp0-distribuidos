@@ -64,7 +64,7 @@ func (c *Client) SendBet(ctx context.Context) {
         return
     }
 
-    time.Sleep(c.config.LoopPeriod)
+    // time.Sleep(c.config.LoopPeriod)
 
     log.Infof("action: message_sent | result: success | client_id: %v", c.config.ID)
 }

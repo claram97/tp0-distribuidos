@@ -16,7 +16,7 @@ def write_file(file_name, clients):
                     f"CLIENTS_NUMBER={clients}"
                 ],
                 "volumes": [
-                    "./server/config.ini:/server/config.ini:rw"
+                    "./server/config.ini:/server/config.ini:ro"
                 ],
                 "networks": ["testing_net"]
             }
@@ -43,7 +43,7 @@ def write_file(file_name, clients):
                 f"CLI_ID={i}",
             ],
             "volumes": [
-                "./client/config.yaml:/config.yaml:rw",
+                "./client/config.yaml:/config.yaml:ro",
                 "./.data:/data:rw"
             ],
             "networks": ["testing_net"],

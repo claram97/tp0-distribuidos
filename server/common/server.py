@@ -17,6 +17,8 @@ class Server:
         self._confirmation_count = 0
         self._clients_number = clients_number
         self._current_clients_number = 0
+        self._client_connections_lock = threading.Lock()
+        self._bets_lock = threading.Lock()
 
     def run(self):
         """
@@ -29,7 +31,8 @@ class Server:
         while True:
             client_sock, addr = accept_new_connection(self._server_socket)
             thread = threading.Thread(target=self.__handle_client_connection, args=(client_sock,))
-            self._clients_list.append(client_sock)
+            with self._client_connections_lock:
+                self._clients_list.append(client_sock)
             thread.start()
         
     def _send_winner_numbers(self, client_id):
@@ -80,7 +83,8 @@ class Server:
                     if data is not None:
                         client_id = data["CLIENT_ID"]
                         if client_id not in self._client_connections:
-                            self._client_connections[int(client_id)] = client_sock
+                            with self._client_connections_lock:
+                                self._client_connections[int(client_id)] = client_sock
                             logging.info(f"action: client_registered | result: success | client_id: {client_id}")
 
                 if batch_error:

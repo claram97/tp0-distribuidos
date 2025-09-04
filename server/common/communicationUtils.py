@@ -75,36 +75,28 @@ def decode_batch(batch_message):
     Separa el encabezado del payload, valida la longitud en CARACTERES y extrae las apuestas.
     """
     try:
-        # 1. Separar encabezado del payload del lote
         parts = batch_message.split('|', 1)
         if len(parts) != 2:
             return None, "Formato de batch inválido (no se encontró 'BATCH_LEN|payload')"
 
         header, payload = parts
 
-        # 2. Validar el encabezado y la longitud del payload en CARACTERES
         if not header.startswith("BATCH_LEN="):
             return None, "El encabezado del batch no comienza con 'BATCH_LEN='"
         
         len_value_str = header.split('=')[1]
         expected_len = int(len_value_str)
 
-        # --- LÓGICA CORREGIDA PARA CARACTERES ---
-        # Comparamos la cantidad de caracteres. Sumamos 1 por el '\n' que el reader quita.
         if len(payload) + 1 != expected_len:
             error_msg = f"La longitud del payload del batch no coincide (esperada: {expected_len}, real: {len(payload) + 1})"
             return None, error_msg
 
-        # 3. Quitar el footer '|END_BATCH' del payload
-        # El '\n' ya fue quitado por el reader, así que buscamos el footer sin él.
         footer = "|END_BATCH"
         if not payload.endswith(footer):
             return None, "El payload del batch no termina con el footer '|END_BATCH'"
         
         bets_body = payload[:-len(footer)]
         
-        # 4. Separar las apuestas individuales
-        # Filtramos para quitar el último elemento si queda vacío por el ':' final
         individual_bets = [bet for bet in bets_body.split(':') if bet]
 
         return individual_bets, None
@@ -161,13 +153,11 @@ def decode_bets_in_batch(bets, client_sock, client_connections):
             return None, f"decode_error: data is None | raw_bet: '{bet_string}'"
 
         try:
-            # Registrar el cliente usando los datos de la primera apuesta válida
             if not client_id_registered:
                 client_id = data["CLIENT_ID"]
                 _register_client(client_id, client_sock, client_connections)
                 client_id_registered = True
 
-            # Crear el objeto Bet
             bet_obj = _create_bet_from_data(data)
             valid_bets.append(bet_obj)
 

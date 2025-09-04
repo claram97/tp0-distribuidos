@@ -114,46 +114,66 @@ def decode_batch(batch_message):
     except Exception as e:
         return None, f"Error inesperado al decodificar el batch: {e}"
 
+def _register_client(client_id, client_sock, client_connections):
+    """
+    Registra la conexión de un cliente si es la primera vez que se lo ve.
+    """
+    if int(client_id) not in client_connections:
+        client_connections[int(client_id)] = client_sock
+        logging.info(f"action: client_registered | result: success | client_id: {client_id}")
+
+def _create_bet_from_data(data):
+    """
+    Crea un objeto Bet a partir de un diccionario de datos.
+    Lanza KeyError si falta alguna clave esperada en los datos.
+    """
+    return Bet(
+        agency=data["CLIENT_ID"],
+        first_name=data["NOMBRE"],
+        last_name=data["APELLIDO"],
+        document=data["DOCUMENTO"],
+        birthdate=data["NACIMIENTO"],
+        number=data["NUMERO"]
+    )
+
 def decode_bets_in_batch(bets, client_sock, client_connections):
     """
-    Decodifica un batch de apuestas y devuelve la lista de Bet válidas.
-    Si alguna apuesta es inválida, retorna el motivo.
+    Decodifica un batch de apuestas orquestando la validación, registro
+    de cliente y creación de objetos.
     """
     valid_bets = []
-    client_id = None
+    client_id_registered = False
 
-    for idx, bet in enumerate(bets):
-        if not bet:
+    for idx, bet_string in enumerate(bets):
+        if not bet_string:
             continue
 
-        status, info, data = decode_message(bet)
+        status, info, data = decode_message(bet_string)
         if status != "success":
             if "longitud del mensaje recibido no es correcta" in info:
                 logging.error(
                     f"action: invalid_length | result: fail | batch_index: {idx} "
-                    f"| raw_bet: '{bet}' | detalle: {info}"
+                    f"| raw_bet: '{bet_string}' | detalle: {info}"
                 )
             return None, f"decode_error: {info}"
 
         if data is None:
-            return None, f"decode_error: data is None | raw_bet: '{bet}'"
+            return None, f"decode_error: data is None | raw_bet: '{bet_string}'"
 
-        # Registrar client_id si es la primera apuesta válida
-        if client_id is None:
-            client_id = data["CLIENT_ID"]
-            if client_id not in client_connections:
-                client_connections[int(client_id)] = client_sock
-                logging.info(f"action: client_registered | result: success | client_id: {client_id}")
+        try:
+            # Registrar el cliente usando los datos de la primera apuesta válida
+            if not client_id_registered:
+                client_id = data["CLIENT_ID"]
+                _register_client(client_id, client_sock, client_connections)
+                client_id_registered = True
 
-        # Crear objeto Bet
-        bet_obj = Bet(
-            agency=data["CLIENT_ID"],
-            first_name=data["NOMBRE"],
-            last_name=data["APELLIDO"],
-            document=data["DOCUMENTO"],
-            birthdate=data["NACIMIENTO"],
-            number=data["NUMERO"]
-        )
-        valid_bets.append(bet_obj)
+            # Crear el objeto Bet
+            bet_obj = _create_bet_from_data(data)
+            valid_bets.append(bet_obj)
+
+        except KeyError as e:
+            # Este error ocurre si a 'data' le falta una clave como "CLIENT_ID", "NOMBRE", etc.
+            logging.error(f"action: create_bet_obj | result: fail | batch_index: {idx} | error: missing key {e}")
+            return None, f"decode_error: campo de datos faltante ({e}) en la apuesta {idx}"
 
     return valid_bets, None

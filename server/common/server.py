@@ -4,7 +4,7 @@ import logging
 
 from common.utils import Bet, has_won, load_bets, store_bets
 from common.communication import Communication, accept_new_connection, send_message
-from common.communicationUtils import decode_and_collect_bets, decode_batch, decode_bets_in_batch, decode_message, encode_message
+from common.communicationUtils import decode_batch, decode_bets_in_batch
 
 
 class Server:

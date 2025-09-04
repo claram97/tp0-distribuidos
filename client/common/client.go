@@ -88,7 +88,6 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 func (c *Client) shouldStop(ctx context.Context) bool {
     select {
     case <-ctx.Done():
-        log.Infof("action: loop_interrupted | result: sigterm_received | client_id: %v", c.config.ID)
         return true
     default:
         return false
@@ -98,7 +97,6 @@ func (c *Client) shouldStop(ctx context.Context) bool {
 func (c *Client) shouldStopDuringSleep(ctx context.Context) bool {
     select {
     case <-ctx.Done():
-        log.Infof("action: loop_interrupted_during_sleep | result: sigterm_received | client_id: %v", c.config.ID)
         return true
     case <-time.After(c.config.LoopPeriod):
         return false

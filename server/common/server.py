@@ -54,7 +54,6 @@ class Server:
             response_bytes = encode_message(status, info)
             conn.send_message(response_bytes)
 
-            # Guardar conexión activa
             self._client_connections.append(conn)
 
         except OSError as e:

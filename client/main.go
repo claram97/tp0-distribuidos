@@ -136,18 +136,6 @@ func getClientConfig(v *viper.Viper) common.ClientConfig {
 	}
 }
 
-
-func getClientConfig(v *viper.Viper) common.ClientConfig {
-
-	return common.ClientConfig{
-		ServerAddress:  v.GetString("server.address"),
-		ID:             v.GetString("id"),
-		LoopAmount:     v.GetInt("loop.amount"),
-		LoopPeriod:     v.GetDuration("loop.period"),
-		BatchMaxAmount: v.GetInt("batch.maxAmount"),
-	}
-}
-
 func main() {
     ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
     defer stop()

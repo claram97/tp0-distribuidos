@@ -5,7 +5,7 @@ import threading
 
 from common.utils import Bet, has_won, load_bets, store_bets
 from common.communication import Communication, accept_new_connection, send_message
-from common.communicationUtils import decode_message, encode_message
+from common.communicationUtils import decode_batch, decode_message, encode_message
 
 
 class Server:
@@ -51,51 +51,6 @@ class Server:
         if "ACK_FIN" in datos_recibidos.decode():
             client_socket.close()
             logging.info(f"action: ack_fin_received | result: success | client_id: {client_id}")
-
-    def __decode_batch(self, batch_message):
-        """
-        Decodifica y valida un lote completo (batch).
-        Separa el encabezado del payload, valida la longitud en CARACTERES y extrae las apuestas.
-        """
-        try:
-            # 1. Separar encabezado del payload del lote
-            parts = batch_message.split('|', 1)
-            if len(parts) != 2:
-                return None, "Formato de batch inválido (no se encontró 'BATCH_LEN|payload')"
-
-            header, payload = parts
-
-            # 2. Validar el encabezado y la longitud del payload en CARACTERES
-            if not header.startswith("BATCH_LEN="):
-                return None, "El encabezado del batch no comienza con 'BATCH_LEN='"
-            
-            len_value_str = header.split('=')[1]
-            expected_len = int(len_value_str)
-
-            # --- LÓGICA CORREGIDA PARA CARACTERES ---
-            # Comparamos la cantidad de caracteres. Sumamos 1 por el '\n' que el reader quita.
-            if len(payload) + 1 != expected_len:
-                error_msg = f"La longitud del payload del batch no coincide (esperada: {expected_len}, real: {len(payload) + 1})"
-                return None, error_msg
-
-            # 3. Quitar el footer '|END_BATCH' del payload
-            # El '\n' ya fue quitado por el reader, así que buscamos el footer sin él.
-            footer = "|END_BATCH"
-            if not payload.endswith(footer):
-                return None, "El payload del batch no termina con el footer '|END_BATCH'"
-            
-            bets_body = payload[:-len(footer)]
-            
-            # 4. Separar las apuestas individuales
-            # Filtramos para quitar el último elemento si queda vacío por el ':' final
-            individual_bets = [bet for bet in bets_body.split(':') if bet]
-
-            return individual_bets, None
-
-        except (ValueError, IndexError) as e:
-            return None, f"Error al parsear el encabezado del batch: {e}"
-        except Exception as e:
-            return None, f"Error inesperado al decodificar el batch: {e}"
         
     def __decode_and_store_bets(self, bets, client_sock):
         valid_bets = []
@@ -161,7 +116,7 @@ class Server:
                     break
                 
                 # --- LÓGICA DE DECODIFICACIÓN DE BATCH ACTUALIZADA ---
-                bets, batch_error = self.__decode_batch(msg)
+                bets, batch_error = decode_batch(msg)
                 # Obtener client_id del primer lote recibido
                 if client_id is None and bets and len(bets) > 0:
                     first_bet = bets[0]

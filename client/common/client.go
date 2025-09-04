@@ -57,6 +57,8 @@ func ReadResponse(reader *bufio.Reader, clientID string) (string, error) {
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error {
+	var conn net.Conn
+	var err error	
 	for i := 1; i <= 3; i++ {
 		conn, err = CreateClientSocket(c.config.ServerAddress, c.config.ID)
 		if err == nil {

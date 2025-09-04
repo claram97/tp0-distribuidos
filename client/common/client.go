@@ -51,51 +51,68 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-// StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop(ctx context.Context) {
-	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		select {
-		case <-ctx.Done():
-			log.Infof("action: loop_interrupted | result: sigterm_received | client_id: %v", c.config.ID)
-			return
-		default:
-		}
+    for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
+        if c.shouldStop(ctx) {
+            return
+        }
 
-		c.createClientSocket()
+        if err := c.createClientSocket(); err != nil || c.conn == nil {
+            log.Errorf("action: connect | result: fail | client_id: %v", c.config.ID)
+            return
+        }
 
-		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"[CLIENT %v] Message N°%v\n",
-			c.config.ID,
-			msgID,
-		)
+        if err := c.sendClientMessage(msgID); err != nil {
+            log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+            c.conn.Close()
+            return
+        }
 
-		msg, err := bufio.NewReader(c.conn).ReadString('\n')
-		c.conn.Close()
+        msg, err := c.receiveServerMessage()
+        c.conn.Close()
+        if err != nil {
+            log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+            return
+        }
 
-		if err != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
-			)
-			return
-		}
+        log.Infof("action: receive_message | result: success | client_id: %v | msg: %v", c.config.ID, msg)
 
-		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-			c.config.ID,
-			msg,
-		)
+        if c.shouldStopDuringSleep(ctx) {
+            return
+        }
+    }
 
-		select {
-		case <-ctx.Done():
-			log.Infof("action: loop_interrupted_during_sleep | result: sigterm_received | client_id: %v", c.config.ID)
-			return
-		case <-time.After(c.config.LoopPeriod):
-		}
-	}
+    log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+}
 
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+func (c *Client) shouldStop(ctx context.Context) bool {
+    select {
+    case <-ctx.Done():
+        log.Infof("action: loop_interrupted | result: sigterm_received | client_id: %v", c.config.ID)
+        return true
+    default:
+        return false
+    }
+}
+
+func (c *Client) shouldStopDuringSleep(ctx context.Context) bool {
+    select {
+    case <-ctx.Done():
+        log.Infof("action: loop_interrupted_during_sleep | result: sigterm_received | client_id: %v", c.config.ID)
+        return true
+    case <-time.After(c.config.LoopPeriod):
+        return false
+    }
+}
+
+func (c *Client) sendClientMessage(msgID int) error {
+    message := fmt.Sprintf("[CLIENT %v] Message N°%v\n", c.config.ID, msgID)
+    _, err := fmt.Fprintf(c.conn, message)
+    return err
+}
+
+func (c *Client) receiveServerMessage() (string, error) {
+    return bufio.NewReader(c.conn).ReadString('\n')
 }
 
 func (c *Client) Close() {

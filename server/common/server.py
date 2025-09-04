@@ -34,11 +34,11 @@ class Server:
         """
         Mantiene la conexión con un cliente usando la clase Connection.
         """
-        conn = Connection(client_sock)
+        reader = Connection(client_sock)
 
         try:
             while True:
-                msg, err = conn.read_message()
+                msg, err = reader.read_message()
                 if err:
                     logging.error(f"action: receive_message | result: fail | error: {err}")
                     break
@@ -48,7 +48,7 @@ class Server:
 
                 if msg == "FIN":
                     response = "ACK_FIN\n".encode()
-                    conn.send_message(response)
+                    reader.send_message(response)
                     logging.info("action: send_ack_fin | result: success")
                     break
 
@@ -56,13 +56,13 @@ class Server:
                 bets, batch_error = decode_batch(msg)
                 if batch_error:
                     logging.error(f"action: decode_batch | result: fail | error: {batch_error}")
-                    conn.send_message("BATCH_ERROR\n".encode())
+                    reader.send_message("BATCH_ERROR\n".encode())
                     break
 
                 valid_bets, decode_error = decode_bets_in_batch(bets, client_sock, self._client_connections)
                 if decode_error:
                     logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")
-                    conn.send_message("BATCH_ERROR\n".encode())
+                    reader.send_message("BATCH_ERROR\n".encode())
                     logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
                     break
 
@@ -70,12 +70,12 @@ class Server:
                     store_bets(valid_bets)
 
                 logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(valid_bets)}")
-                conn.send_message("ACK_BATCH\n".encode())
+                reader.send_message("ACK_BATCH\n".encode())
                 logging.info(f"action: send_ack_batch | result: success | bets_received: {len(valid_bets)}")
 
 
         finally:
-            conn.close()
+            reader.close()
             logging.info("action: connection_closed | result: success")
 
 

@@ -40,6 +40,34 @@ func NewClient(config ClientConfig) *Client {
 	return &Client{config: config}
 }
 
+
+// buildBatch construye el contenido de un batch y devuelve el string listo para enviar.
+func buildBatch(messages []string, footer string) string {
+	batchContent := strings.Join(messages, "") + footer
+	batchLen := utf8.RuneCountInString(batchContent)
+	return fmt.Sprintf("BATCH_LEN=%d|%s", batchLen, batchContent)
+}
+
+// sendBatch envía un batch y espera la respuesta del servidor.
+func sendBatch(conn net.Conn, reader *bufio.Reader, batch string, clientID string, isFinal bool) error {
+	action := "batch_sent"
+	if isFinal {
+		action = "final_batch_sent"
+	}
+
+	if err := SendMessage(conn, batch, clientID); err != nil {
+		log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v", clientID, err)
+		return fmt.Errorf("send_batch_error: %w", err)
+	}
+	log.Infof("action: %s | result: success | client_id: %v", action, clientID)
+
+	if err := ReadResponse(reader, clientID); err != nil {
+		log.Errorf("action: batch_ack | result: fail | client_id: %v | error: %v", clientID, err)
+		return fmt.Errorf("batch_error: %w", err)
+	}
+	return nil
+}
+
 func ReadResponse(reader *bufio.Reader, clientID string) error {
 	response, err := reader.ReadString('\n')
 	if err != nil {
@@ -58,7 +86,6 @@ func ReadResponse(reader *bufio.Reader, clientID string) error {
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error {
 	conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
 	if err != nil {
-		log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		return fmt.Errorf("connection_error: %w", err)
 	}
 	defer conn.Close()
@@ -94,24 +121,12 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 		msgBytes := len([]byte(msg))
 		tentativeSize := batchSize + msgBytes + len([]byte(footer))
 
+		// Flush si llegamos a los límites
 		if tentativeSize >= 8192 || len(messages) == c.config.BatchMaxAmount {
-			batchContent := strings.Join(messages, "")
-			batchContent = batchContent + footer
-			batchLen := utf8.RuneCountInString(batchContent)
-			batchToSend := fmt.Sprintf("BATCH_LEN=%d|%s", batchLen, batchContent)
-
-			log.Infof("Sending batch (lines %d, characters %d)", len(messages), batchLen)
-			if err := SendMessage(conn, batchToSend, c.config.ID); err != nil {
-				log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				return fmt.Errorf("send_batch_error: %w", err)
+			batch := buildBatch(messages, footer)
+			if err := sendBatch(conn, reader, batch, c.config.ID, false); err != nil {
+				return err
 			}
-			log.Infof("action: batch_sent | result: success | client_id: %v", c.config.ID)
-
-			if err := ReadResponse(reader, c.config.ID); err != nil {
-				log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				return fmt.Errorf("batch_error: %w", err)
-			}
-
 			messages = messages[:0]
 			batchSize = 0
 		}
@@ -121,21 +136,11 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 		msgID++
 	}
 
+	// Enviar batch final si queda algo
 	if len(messages) > 0 {
-		batchContent := strings.Join(messages, "")
-		batchContent = batchContent + footer
-		batchLen := utf8.RuneCountInString(batchContent)
-		batchToSend := fmt.Sprintf("BATCH_LEN=%d|%s", batchLen, batchContent)
-
-		log.Infof("Sending final batch (lines %d, characters %d)", len(messages), batchLen)
-		if err := SendMessage(conn, batchToSend, c.config.ID); err != nil {
-			log.Errorf("action: send_final_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			return fmt.Errorf("send_final_batch_error: %w", err)
-		}
-		log.Infof("action: final_batch_sent | result: success | client_id: %v", c.config.ID)
-		if err := ReadResponse(reader, c.config.ID); err != nil {
-			log.Errorf("action: batch_error_received | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			return fmt.Errorf("final_batch_error: %w", err)
+		batch := buildBatch(messages, footer)
+		if err := sendBatch(conn, reader, batch, c.config.ID, true); err != nil {
+			return err
 		}
 	}
 
@@ -143,12 +148,10 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 		log.Errorf("action: scanner_error | result: fail | client_id: %v | error: %v", c.config.ID, err)
 	}
 
-	log.Infof("action: sending_fin | result: in_progress | client_id: %v", c.config.ID)
+	// FIN protocol
 	if err := SendMessage(conn, "FIN\n", c.config.ID); err != nil {
-		log.Errorf("action: send_fin | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		return fmt.Errorf("send_fin_error: %w", err)
 	}
-
 	if err := ReadResponse(reader, c.config.ID); err != nil {
 		return fmt.Errorf("fin_response_error: %w", err)
 	}

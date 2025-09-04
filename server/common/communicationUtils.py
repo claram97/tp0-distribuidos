@@ -1,3 +1,8 @@
+import logging
+
+from common.utils import Bet
+
+
 def parse_message(splitted_msg):
     len_str = splitted_msg[0].split('=')[1]
     nombre = splitted_msg[1].split('=')[1]
@@ -65,3 +70,100 @@ def encode_message(status, info):
     response = f"LEN={len(response_body)}|{response_body}"
 
     return response.encode('utf-8')
+
+def decode_batch(batch_message):
+    """
+    Decodifica y valida un lote completo (batch).
+    Separa el encabezado del payload, valida la longitud en CARACTERES y extrae las apuestas.
+    """
+    try:
+        # 1. Separar encabezado del payload del lote
+        parts = batch_message.split('|', 1)
+        if len(parts) != 2:
+            return None, "Formato de batch inválido (no se encontró 'BATCH_LEN|payload')"
+
+        header, payload = parts
+
+        # 2. Validar el encabezado y la longitud del payload en CARACTERES
+        if not header.startswith("BATCH_LEN="):
+            return None, "El encabezado del batch no comienza con 'BATCH_LEN='"
+        
+        len_value_str = header.split('=')[1]
+        expected_len = int(len_value_str)
+
+        # --- LÓGICA CORREGIDA PARA CARACTERES ---
+        # Comparamos la cantidad de caracteres. Sumamos 1 por el '\n' que el reader quita.
+        if len(payload) + 1 != expected_len:
+            error_msg = f"La longitud del payload del batch no coincide (esperada: {expected_len}, real: {len(payload) + 1})"
+            return None, error_msg
+
+        # 3. Quitar el footer '|END_BATCH' del payload
+        # El '\n' ya fue quitado por el reader, así que buscamos el footer sin él.
+        footer = "|END_BATCH"
+        if not payload.endswith(footer):
+            return None, "El payload del batch no termina con el footer '|END_BATCH'"
+        
+        bets_body = payload[:-len(footer)]
+        
+        # 4. Separar las apuestas individuales
+        # Filtramos para quitar el último elemento si queda vacío por el ':' final
+        individual_bets = [bet for bet in bets_body.split(':') if bet]
+
+        return individual_bets, None
+
+    except (ValueError, IndexError) as e:
+        return None, f"Error al parsear el encabezado del batch: {e}"
+    except Exception as e:
+        return None, f"Error inesperado al decodificar el batch: {e}"
+    
+def decode_bets_in_batch(bets, client_sock, client_connections):
+    """
+    Decodifica un batch de apuestas y devuelve una lista de Bet válidas.
+    Si alguna apuesta es inválida, lanza ValueError.
+
+    Args:
+        bets (list[str]): apuestas crudas en formato de mensaje.
+        client_sock (socket): socket del cliente que envió el batch.
+        client_connections (dict): mapa {client_id: socket} de clientes conectados.
+
+    Returns:
+        list[Bet]: apuestas válidas.
+    """
+    valid_bets = []
+    client_id = None
+
+    for idx, bet in enumerate(bets):
+        if not bet:
+            continue
+
+        status, info, data = decode_message(bet)
+        if status != "success":
+            if "longitud del mensaje recibido no es correcta" in info:
+                logging.error(
+                    f"action: invalid_length | result: fail | batch_index: {idx} "
+                    f"| raw_bet: '{bet}' | detalle: {info}"
+                )
+            raise ValueError(f"decode_error: {info}")
+
+        if data is None:
+            raise ValueError(f"decode_error: data is None | raw_bet: '{bet}'")
+
+        # Registrar client_id si es la primera vez
+        if client_id is None:
+            client_id = data["CLIENT_ID"]
+            if client_id not in client_connections:
+                client_connections[client_id] = client_sock
+                logging.info(f"action: client_registered | result: success | client_id: {client_id}")
+
+        # Crear objeto Bet
+        bet_obj = Bet(
+            agency=data["CLIENT_ID"],
+            first_name=data["NOMBRE"],
+            last_name=data["APELLIDO"],
+            document=data["DOCUMENTO"],
+            birthdate=data["NACIMIENTO"],
+            number=data["NUMERO"]
+        )
+        valid_bets.append(bet_obj)
+
+    return valid_bets

@@ -90,17 +90,18 @@ func PrintConfig(v *viper.Viper) {
 	)
 }
 
-func main() {
+func initClient() *common.Client {
 	v, err := InitConfig()
 	if err != nil {
 		log.Criticalf("%s", err)
+		os.Exit(1)
 	}
 
 	if err := InitLogger(v.GetString("log.level")); err != nil {
 		log.Criticalf("%s", err)
+		os.Exit(1)
 	}
 
-	// Print program config with debugging purposes
 	PrintConfig(v)
 
 	clientConfig := common.ClientConfig{
@@ -110,6 +111,12 @@ func main() {
 		LoopPeriod:    v.GetDuration("loop.period"),
 	}
 
-	client := common.NewClient(clientConfig)
+	return common.NewClient(clientConfig)
+}
+
+func main() {
+	client := initClient()
+	defer client.Close()
 	client.StartClientLoop()
+	os.Exit(0)
 }

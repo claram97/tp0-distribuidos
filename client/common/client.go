@@ -36,32 +36,35 @@ func NewClient(config ClientConfig) *Client {
 	return &Client{config: config}
 }
 
+func (c *Client) shouldStop(ctx context.Context) bool {
+    select {
+    case <-ctx.Done():
+        log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
+        return true
+    default:
+        return false
+    }
+}
+
 func (c *Client) StartClientLoop(ctx context.Context) {
     msgID := 1
-	select {
-	case <-ctx.Done():
-		log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
-		return
-	default:
-		conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
-		if err != nil {
-			return
-		}
-		c.conn = conn
+    if c.shouldStop(ctx) {
+        return
+    }
 
-		if err := c.handleMessage(msgID); err != nil {
-			log.Errorf("action: client_loop | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			c.conn = nil
-			return
-		}
+    conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
+    if err != nil {
+        return
+    }
+    c.conn = conn
 
-		select {
-		case <-ctx.Done():
-			log.Infof("action: loop_interrupted | result: sigterm | client_id: %v", c.config.ID)
-			return
-		case <-time.After(c.config.LoopPeriod):
-		}
-	}
+    if err := c.handleMessage(msgID); err != nil {
+        log.Errorf("action: client_loop | result: fail | client_id: %v | error: %v", c.config.ID, err)
+        c.conn = nil
+        return
+    }
+
+    time.Sleep(c.config.LoopPeriod)
 
     log.Infof("action: message_sent | result: success | client_id: %v", c.config.ID)
 }

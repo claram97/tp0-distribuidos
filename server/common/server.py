@@ -4,12 +4,11 @@ import logging
 
 from common.utils import Bet, has_won, load_bets, store_bets
 from common.communication import Communication, accept_new_connection, send_message
-from common.communicationUtils import decode_and_collect_bets, decode_batch, decode_message, encode_message
+from common.communicationUtils import decode_and_collect_bets, decode_batch, decode_bets_in_batch, decode_message, encode_message
 
 
 class Server:
     def __init__(self, port, listen_backlog, clients_number):
-        # Initialize server socket
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
@@ -38,7 +37,6 @@ class Server:
         for bet in load_bets():
             if has_won(bet):
                 logging.info(f"action: winner_found | result: success | winner: {bet.first_name} {bet.last_name} | number: {bet.number} | client_id: {bet.agency}")
-                # Notificar los ganadores a través de su conexión guardada
 
                 if bet.agency in self._client_connections.keys():
                     logging.info(f"action: notify_winner | result: success | client_id: {bet.agency} | winner: {bet.first_name} {bet.last_name} | number: {bet.number}")
@@ -74,20 +72,18 @@ class Server:
                 if msg == "FIN":
                     break
                 
-                # --- LÓGICA DE DECODIFICACIÓN DE BATCH ACTUALIZADA ---
                 bets, batch_error = decode_batch(msg)
                 if batch_error:
                     logging.error(f"action: decode_batch | result: fail | error: {batch_error}")
                     break
 
-                valid_bets, decode_error = decode_and_collect_bets(bets, client_sock, self._client_connections)
+                valid_bets, decode_error = decode_bets_in_batch(bets, client_sock, self._client_connections)
                 if decode_error:
                     logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")
                     client_sock.sendall("BATCH_ERROR\n".encode())
                     logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
                     break
 
-                # Solo si todo se decodificó bien, almacenamos las apuestas
                 if valid_bets:
                     store_bets(valid_bets)
 

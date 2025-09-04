@@ -116,7 +116,7 @@ def decode_batch(batch_message):
     except Exception as e:
         return None, f"Error inesperado al decodificar el batch: {e}"
 
-def decode_and_collect_bets(bets, client_sock, client_connections):
+def decode_bets_in_batch(bets, client_sock, client_connections):
     """
     Decodifica un batch de apuestas y devuelve la lista de Bet válidas.
     Si alguna apuesta es inválida, retorna el motivo.

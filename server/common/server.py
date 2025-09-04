@@ -34,10 +34,12 @@ class Server:
         for client_sock in self._clients_list:
             self.__handle_client_connection(client_sock)
         
+        self._send_winner_numbers()
+
+    def _send_winner_numbers(self):
         for bet in load_bets():
             if has_won(bet):
                 logging.info(f"action: winner_found | result: success | winner: {bet.first_name} {bet.last_name} | number: {bet.number} | client_id: {bet.agency}")
-
                 if bet.agency in self._client_connections.keys():
                     logging.info(f"action: notify_winner | result: success | client_id: {bet.agency} | winner: {bet.first_name} {bet.last_name} | number: {bet.number}")
                     response = f"WINNER|{bet.first_name}|{bet.last_name}|{bet.number}\n"

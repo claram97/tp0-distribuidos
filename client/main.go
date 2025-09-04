@@ -93,50 +93,51 @@ func PrintConfig(v *viper.Viper) {
 	)
 }
 
+func initClient() *common.Client {
+    v, err := InitConfig()
+    if err != nil {
+        log.Criticalf("%s", err)
+        os.Exit(1)
+    }
+
+    if err := InitLogger(v.GetString("log.level")); err != nil {
+        log.Criticalf("%s", err)
+        os.Exit(1)
+    }
+
+    PrintConfig(v)
+
+    clientConfig := common.ClientConfig{
+        ServerAddress: v.GetString("server.address"),
+        ID:            v.GetString("id"),
+        LoopAmount:    v.GetInt("loop.amount"),
+        LoopPeriod:    v.GetDuration("loop.period"),
+    }
+
+    return common.NewClient(clientConfig)
+}
+
+func runClient(ctx context.Context, client *common.Client) {
+    client.StartClientLoop(ctx)
+}
+
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-	defer stop()
-	done := make(chan struct{})
+    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+    defer stop()
+    done := make(chan struct{})
 
-	var client *common.Client 
-	defer client.Close()
+    client := initClient()
+    defer client.Close()
 
-	go func() {
-		v, err := InitConfig()
-		if err != nil {
-			log.Criticalf("%s", err)
-		}
+    go func() {
+        runClient(ctx, client)
+        close(done)
+    }()
 
-		if err := InitLogger(v.GetString("log.level")); err != nil {
-			log.Criticalf("%s", err)
-		}
-
-		PrintConfig(v)
-
-		clientConfig := common.ClientConfig{
-			ServerAddress: v.GetString("server.address"),
-			ID:            v.GetString("id"),
-			LoopAmount:    v.GetInt("loop.amount"),
-			LoopPeriod:    v.GetDuration("loop.period"),
-		}
-
-		client = common.NewClient(clientConfig)
-
-		client.StartClientLoop(ctx)
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done(): 
-		if client != nil {
-			client.Close() 
-		}
-		log.Infof("action: exit | result: success")
-	case <-done:
-		log.Infof("action: exit | result: success")
-		if client != nil {
-			client.Close() 
-		}
-		os.Exit(0)
-	}
+    select {
+    case <-ctx.Done():
+        log.Infof("action: exit | result: sigterm")
+    case <-done:
+        log.Infof("action: exit | result: success")
+    }
 }

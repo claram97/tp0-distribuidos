@@ -206,9 +206,8 @@ func main() {
 	select {
 	case <-done:
 		log.Infof("action: exit | result: success")
-		os.Exit(0)
 	case <-ctx.Done():
 		log.Infof("action: exit | result: success")
-		os.Exit(0)
 	}
+	os.Exit(0)
 }

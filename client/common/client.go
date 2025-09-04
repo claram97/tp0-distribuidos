@@ -51,25 +51,39 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
+func (c *Client) connectWithRetry(attempts int) error {
+    var err error
+    for i := 1; i <= attempts; i++ {
+        err = c.createClientSocket()
+        if err == nil {
+            return nil
+        }
+        log.Warningf("action: create_conn | result: retrying | attempt: %d | client_id: %v | error: %v", i, c.config.ID, err)
+        time.Sleep(2 * time.Second)
+    }
+    log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
+    return fmt.Errorf("connection_error_after_retries: %w", err)
+}
+
 func (c *Client) StartClientLoop(ctx context.Context) {
     for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
         if c.shouldStop(ctx) {
             return
         }
 
-        if err := c.createClientSocket(); err != nil || c.conn == nil {
-            log.Errorf("action: connect | result: fail | client_id: %v", c.config.ID)
-            return
-        }
+    	err := c.connectWithRetry(3)
+		if err != nil {
+			log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return
+		}
+		defer c.conn.Close()
 
         if err := c.sendClientMessage(msgID); err != nil {
             log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
-            c.conn.Close()
             return
         }
 
         msg, err := c.receiveServerMessage()
-        c.conn.Close()
         if err != nil {
             log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
             return

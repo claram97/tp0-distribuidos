@@ -3,7 +3,7 @@ import socket
 import logging
 
 from common.utils import Bet, store_bets
-from common.communication import Communication, accept_new_connection, send_message
+from common.communication import Connection, accept_new_connection
 from common.communicationUtils import decode_message, encode_message
 
 
@@ -126,51 +126,47 @@ class Server:
 
     def __handle_client_connection(self, client_sock):
         """
-        Mantiene la conexión para un diálogo de pregunta-respuesta con el cliente.
+        Mantiene la conexión con un cliente usando la clase Connection.
         """
-        reader = Communication(client_sock)
+        conn = Connection(client_sock)
 
         try:
             while True:
-                msg, err = reader.read_message()
-                if err is not None:
+                msg, err = conn.read_message()
+                if err:
                     logging.error(f"action: receive_message | result: fail | error: {err}")
                     break
                 if msg is None:
                     logging.info("action: client_disconnected_unexpectedly | result: success")
                     break
-                
+
                 if msg == "FIN":
-                    self.__store_bets_and_finish(client_sock)
+                    response = "ACK_FIN\n".encode()
+                    conn.send_message(response)
+                    logging.info("action: send_ack_fin | result: success")
                     break
-                
-                # --- LÓGICA DE DECODIFICACIÓN DE BATCH ACTUALIZADA ---
+
+                # Decodificar batch
                 bets, batch_error = self.__decode_batch(msg)
-                
                 if batch_error:
                     logging.error(f"action: decode_batch | result: fail | error: {batch_error}")
                     break
-                
-                decode_error = self.__decode_and_store_bets(bets, client_sock)
-                
+
+                decode_error = self.__decode_and_store_bets(bets, conn.sock)
                 if decode_error:
-                    # Hubo error al decodificar una apuesta dentro del lote
                     logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")
-                    response = "BATCH_ERROR\n"
-                    client_sock.sendall(response.encode())
+                    conn.send_message("BATCH_ERROR\n".encode())
                     logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
                     break
                 else:
-                    # Todo el lote se procesó correctamente
                     logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
-                    logging.info(f"action: batch_processed | result: success | bets_received: {len(bets)}")
-                    response = "ACK_BATCH\n"
-                    client_sock.sendall(response.encode())
+                    conn.send_message("ACK_BATCH\n".encode())
                     logging.info(f"action: send_ack_batch | result: success | bets_received: {len(bets)}")
 
         finally:
-            client_sock.close()
+            conn.close()
             logging.info("action: connection_closed | result: success")
+
 
     def stop(self):
         self._server_socket.close()

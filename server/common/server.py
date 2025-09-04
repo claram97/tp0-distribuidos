@@ -4,7 +4,7 @@ import logging
 
 from common.utils import Bet, has_won, load_bets, store_bets
 from common.communication import Communication, accept_new_connection, send_message
-from common.communicationUtils import decode_message, encode_message
+from common.communicationUtils import decode_batch, decode_message, encode_message
 
 
 class Server:
@@ -163,7 +163,7 @@ class Server:
                     break
                 
                 # --- LÓGICA DE DECODIFICACIÓN DE BATCH ACTUALIZADA ---
-                bets, batch_error = self.__decode_batch(msg)
+                bets, batch_error = decode_batch(msg)
                 
                 if batch_error:
                     logging.error(f"action: decode_batch | result: fail | error: {batch_error}")

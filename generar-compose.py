@@ -53,7 +53,7 @@ def write_file(file_name, clients):
 
 def is_valid_client_count(value):
     ivalue = int(value)
-    if ivalue < 1 or ivalue > MAX_CLIENTS:
+    if ivalue < 0 or ivalue > MAX_CLIENTS:
         raise argparse.ArgumentTypeError(f"Invalid number of clients: {value}. Must be between 1 and {MAX_CLIENTS}.")
     return ivalue
 

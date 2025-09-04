@@ -1,6 +1,4 @@
 def parse_message(splitted_msg):
-    # Esta función asume que splitted_msg tiene 9 elementos
-    # Si hay error, lanza la excepción
     len_str = splitted_msg[0].split('=')[1]
     nombre = splitted_msg[1].split('=')[1]
     apellido = splitted_msg[2].split('=')[1]
@@ -38,8 +36,6 @@ def decode_message(message):
                 return "failed", "la longitud del mensaje recibido no es correcta", None
         except ValueError:
             return "failed", "LEN del mensaje no es un entero válido", None
-
-        # TODO: agregar más validaciones
 
         data = {
             "nombre": nombre,

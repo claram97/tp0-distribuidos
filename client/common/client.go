@@ -48,7 +48,6 @@ func ReadResponse(reader *bufio.Reader, clientID string) (string, error) {
 	}
 
 	trimmedResponse := strings.TrimSpace(response)
-	// log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
 
 	if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
 		return trimmedResponse, fmt.Errorf("server returned batch error")
@@ -58,10 +57,18 @@ func ReadResponse(reader *bufio.Reader, clientID string) (string, error) {
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error {
-	conn, err := CreateClientSocket(c.config.ServerAddress, c.config.ID)
+	for i := 1; i <= 3; i++ {
+		conn, err = CreateClientSocket(c.config.ServerAddress, c.config.ID)
+		if err == nil {
+			break
+		}
+		log.Warningf("action: create_conn | result: retrying | attempt: %d | client_id: %v | error: %v", i, c.config.ID, err)
+		time.Sleep(2 * time.Second)
+	}
+
 	if err != nil {
 		log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
-		return fmt.Errorf("connection_error: %w", err)
+		return fmt.Errorf("connection_error_after_retries: %w", err)
 	}
 	defer conn.Close()
 
@@ -155,10 +162,8 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 
 	log.Infof("action: waiting_for_winners_and_fin | result: in_progress | client_id: %v", c.config.ID)
 
-	// Agregado: Variable para contar ganadores
 	winnerCount := 0
 
-	// Bucle para recibir mensajes del servidor (ganadores o el ACK_FIN)
 	for {
 		msg, err := ReadResponse(reader, c.config.ID)
 		if err != nil {
@@ -166,18 +171,14 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 			return fmt.Errorf("error reading from server: %w", err)
 		}
 
-		// Si el servidor nos manda el ACK_FIN, salimos del bucle para terminar.
 		if msg == "ACK_FIN" {
 			log.Infof("action: server_fin_ack_received | result: success | client_id: %v", c.config.ID)
 			break
 		}
 
-		// Si no es ACK_FIN, es un mensaje de un ganador. Lo mostramos y contamos.
-		// log.Infof("action: winner_announcement_received | result: success | client_id: %v | message: %s", c.config.ID, msg)
 		winnerCount++
 	}
 
-	// Agregado: Impresión de la cantidad de ganadores
 	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", winnerCount)
 
 	// Ahora que recibimos el ACK_FIN del servidor, le respondemos con el nuestro.

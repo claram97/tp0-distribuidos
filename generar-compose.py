@@ -66,7 +66,7 @@ def parse_arguments():
         "--clients",
         required=True,
         type=is_valid_client_count,
-        help=f"Cantidad de clientes (entre 1 y {MAX_CLIENTS})"
+        help=f"Cantidad de clientes (entre 0 y {MAX_CLIENTS})"
     )
 
     args = parser.parse_args()

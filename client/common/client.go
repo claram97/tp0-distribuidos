@@ -40,22 +40,6 @@ func NewClient(config ClientConfig) *Client {
 	return &Client{config: config}
 }
 
-func ReadResponse(reader *bufio.Reader, clientID string) (string, error) {
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
-		return "", err
-	}
-
-	trimmedResponse := strings.TrimSpace(response)
-
-	if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
-		return trimmedResponse, fmt.Errorf("server returned batch error")
-	}
-
-	return trimmedResponse, nil
-}
-
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error {
 	conn, err := c.connectWithRetries(3, 2*time.Second)
 	if err != nil {

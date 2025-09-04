@@ -3,7 +3,7 @@ import socket
 import logging
 
 from common.utils import Bet, has_won, load_bets, store_bets
-from common.communication import Communication, accept_new_connection, send_message
+from common.communication import Connection, accept_new_connection
 from common.communicationUtils import decode_batch, decode_bets_in_batch
 
 
@@ -27,7 +27,7 @@ class Server:
         finishes, servers starts to accept new connections again
         """
         while self._current_clients_number < self._clients_number:
-            client_sock, addr = accept_new_connection(self._server_socket)
+            client_sock, = accept_new_connection(self._server_socket)
             self._clients_list.append(client_sock)
             self._current_clients_number += 1
 
@@ -42,11 +42,11 @@ class Server:
                     logging.info(f"action: notify_winner | result: success | client_id: {bet.agency} | winner: {bet.first_name} {bet.last_name} | number: {bet.number}")
                     response = f"WINNER|{bet.first_name}|{bet.last_name}|{bet.number}\n"
                     client_socket = self._client_connections[bet.agency]
-                    client_socket.sendall(response.encode())
+                    Connection(client_socket).send_message(response.encode())
 
         for (client_id, client_socket) in self._client_connections.items():
             response = "ACK_FIN\n"
-            client_socket.sendall(response.encode())
+            Connection(client_socket).send_message(response.encode())
             logging.info("action: send_ack_fin | result: success")
             datos_recibidos = client_socket.recv(1024)
             if "ACK_FIN" in datos_recibidos.decode():
@@ -57,7 +57,7 @@ class Server:
         """
         Mantiene la conexión para un diálogo de pregunta-respuesta con el cliente.
         """
-        reader = Communication(client_sock)
+        reader = Connection(client_sock)
 
         try:
             while True:
@@ -80,7 +80,7 @@ class Server:
                 valid_bets, decode_error = decode_bets_in_batch(bets, client_sock, self._client_connections)
                 if decode_error:
                     logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")
-                    client_sock.sendall("BATCH_ERROR\n".encode())
+                    reader.send_message("BATCH_ERROR\n".encode())
                     logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
                     break
 
@@ -88,7 +88,7 @@ class Server:
                     store_bets(valid_bets)
 
                 logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(valid_bets)}")
-                client_sock.sendall("ACK_BATCH\n".encode())
+                reader.send_message("ACK_BATCH\n".encode())
                 logging.info(f"action: send_ack_batch | result: success | bets_received: {len(valid_bets)}")
 
         finally:

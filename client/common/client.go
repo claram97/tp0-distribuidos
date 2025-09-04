@@ -71,7 +71,7 @@ func (c *Client) SendBet(ctx context.Context) {
 }
 
 func (c *Client) handleMessage(msgID int) error {
-    message := ParsedMessage(c.config.Data, c.config.ID, msgID)
+    message := EncodedBet(c.config.Data, c.config.ID, msgID)
     if err := SendMessage(c.conn, message, c.config.ID); err != nil {
         return fmt.Errorf("send_message: %w", err)
     }
@@ -84,16 +84,17 @@ func (c *Client) handleMessage(msgID int) error {
     log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %s",
         c.config.Data.Documento, c.config.Data.Numero)
 
-    status, info, err := ParseResponse(response)
+    status, info, err := CheckResponseStatus(response)
     if err != nil {
         log.Errorf("action: parse_response | result: failed | client_id: %v | error: %v", c.config.ID, err)
         return err
     }
 
-    if status == "success" {
+    if status == SuccessStatus {
         log.Infof("action: server_response | result: success | client_id: %v | info: %v", c.config.ID, info)
     } else {
         log.Errorf("action: server_response | result: failed | client_id: %v | info: %v", c.config.ID, info)
+        return fmt.Errorf("receive_message: %w", err)
     }
     return nil
 }

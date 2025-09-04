@@ -34,7 +34,7 @@ class Server:
             with self._client_connections_lock:
                 self._clients_list.append(client_sock)
             thread.start()
-        
+
     def _send_winner_numbers(self, client_id):
         client_socket = self._client_connections[client_id]
         for bet in load_bets():
@@ -91,7 +91,7 @@ class Server:
                     logging.error(f"action: decode_batch | result: fail | error: {batch_error}")
                     break
 
-                decode_error = decode_bets_in_batch(bets, client_sock, self._client_connections)
+                decode_error = decode_bets_in_batch(bets, client_sock, self._client_connections, self._client_connections_lock, self._bets_lock)
 
                 if decode_error:
                     # Hubo error al decodificar una apuesta dentro del lote

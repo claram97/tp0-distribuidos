@@ -15,7 +15,7 @@ def write_file(file_name, clients):
                     "PYTHONUNBUFFERED=1",
                 ],
                 "volumes": [
-                    "./server/config.ini:/server/config.ini:rw"
+                    "./server/config.ini:/server/config.ini:ro"
                 ],
                 "networks": ["testing_net"]
             }
@@ -45,7 +45,7 @@ def write_file(file_name, clients):
                 "client.env",
             ],
             "volumes": [
-                "./client/config.yaml:/config.yaml:rw"
+                "./client/config.yaml:/config.yaml:ro"
             ],
             "networks": ["testing_net"],
             "depends_on": ["server"]

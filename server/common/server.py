@@ -2,8 +2,8 @@ import socket
 import logging
 import threading
 
-from common.utils import Bet, has_won, load_bets, store_bets
-from common.communication import Communication, accept_new_connection, send_message
+from common.utils import has_won, load_bets, store_bets
+from common.communication import Connection, accept_new_connection
 from common.communicationUtils import decode_batch, decode_bets_in_batch, decode_message, encode_message
 
 
@@ -54,7 +54,7 @@ class Server:
         """
         Mantiene la conexión para un diálogo de pregunta-respuesta con el cliente.
         """
-        reader = Communication(client_sock)
+        reader = Connection(client_sock)
         client_id = None
 
         try:

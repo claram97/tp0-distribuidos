@@ -1,8 +1,6 @@
-import csv
 import socket
 import logging
-
-from common.utils import Bet, store_bets
+from common.utils import store_bets
 from common.communication import Connection, accept_new_connection
 from common.communicationUtils import decode_batch, decode_bets_in_batch, decode_message, encode_message
 

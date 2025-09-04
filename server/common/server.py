@@ -50,14 +50,13 @@ class Server:
                 if bet.agency == client_id:
                     logging.info(f"action: notify_winner | result: success | client_id: {bet.agency} | winner: {bet.first_name} {bet.last_name} | number: {bet.number}")
                     response = f"WINNER|{bet.first_name}|{bet.last_name}|{bet.number}\n"
-                    # Asegurarse de que el socket aún existe antes de enviar
                     with self._client_connections_lock:
                         if bet.agency in self._client_connections:
                             client_socket = self._client_connections[bet.agency]
-                            client_socket.sendall(response.encode())
+                            Connection(client_socket).send_message(response.encode())
 
         response = "ACK_FIN\n"
-        client_socket.sendall(response.encode())
+        Connection(client_socket).send_message(response.encode())
         logging.info("action: send_ack_fin | result: success")
         datos_recibidos = client_socket.recv(1024)
         if "ACK_FIN" in datos_recibidos.decode():
@@ -108,14 +107,14 @@ class Server:
                 if decode_error:
                     logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")
                     response = "BATCH_ERROR\n"
-                    client_sock.sendall(response.encode())
+                    Connection(client_sock).send_message(response.encode())
                     logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
                     break
                 else:
                     logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
                     logging.info(f"action: batch_processed | result: success | bets_received: {len(bets)}")
                     response = "ACK_BATCH\n"
-                    client_sock.sendall(response.encode())
+                    Connection(client_sock).send_message(response.encode())
                     logging.info(f"action: send_ack_batch | result: success | bets_received: {len(bets)}")
 
         finally:

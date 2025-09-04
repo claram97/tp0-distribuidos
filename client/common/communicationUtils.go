@@ -7,6 +7,7 @@ import (
 )
 
 const SuccessStatus = "success"
+const FieldsNumber = 4 // LEN, STATUS, INFO, END
 
 func EncodedBet(data BetData, clientID string, msgID int) string {
 	dataStr := fmt.Sprintf(
@@ -26,15 +27,12 @@ func EncodedBet(data BetData, clientID string, msgID int) string {
 // Formato esperado: LEN=<n>|STATUS=<status>|INFO=<info>|END
 // Devuelve: status, info, error
 func CheckResponseStatus(response string) (string, string, error) {
-    // Dividimos la respuesta en campos separados por '|'
     parts := strings.Split(response, "|")
 
-    // Necesitamos al menos 4 partes: LEN, STATUS, INFO y END
-    if len(parts) < 4 {
+    if len(parts) < FieldsNumber {
         return "", "", fmt.Errorf("invalid_format: %q", response)
     }
 
-    // --- Validación de LEN ---
     expectedLen, err := parseLenField(parts[0])
     if err != nil {
         return "", "", fmt.Errorf("invalid_len_field: %w", err)
@@ -43,18 +41,15 @@ func CheckResponseStatus(response string) (string, string, error) {
     // Reconstruimos el cuerpo de la respuesta (STATUS|INFO|END)
     responseBody := strings.Join(parts[1:4], "|")
 
-    // Chequeamos que la longitud coincida con el LEN declarado
     if len(responseBody) != expectedLen {
         return "", "", fmt.Errorf("len_mismatch: expected %d, got %d", expectedLen, len(responseBody))
     }
 
-    // --- Parseo de STATUS e INFO ---
     status, info, err := parseStatusAndInfo(parts[1], parts[2])
     if err != nil {
         return "", "", fmt.Errorf("invalid_status_info: %w", err)
     }
 
-    // Devolvemos el resultado
     return status, info, nil
 }
 

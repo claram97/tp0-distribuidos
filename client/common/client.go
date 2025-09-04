@@ -41,8 +41,9 @@ func NewClient(config ClientConfig) *Client {
 }
 
 func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error {
-	conn, err := c.connectWithRetries(3, 2*time.Second)
+	conn, err := ConnectWithRetry(3, c.config.ID, c.config.ServerAddress)
 	if err != nil {
+		log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		return fmt.Errorf("connection_error_after_retries: %w", err)
 	}
 	defer conn.Close()
@@ -60,22 +61,6 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 
 	log.Infof("action: client_finished_gracefully | result: success | client_id: %v", c.config.ID)
 	return nil
-}
-
-// connectWithRetries intenta conectarse varias veces antes de fallar
-func (c *Client) connectWithRetries(attempts int, delay time.Duration) (net.Conn, error) {
-	var conn net.Conn
-	var err error
-	for i := 1; i <= attempts; i++ {
-		conn, err = CreateClientSocket(c.config.ServerAddress, c.config.ID)
-		if err == nil {
-			return conn, nil
-		}
-		log.Warningf("action: create_conn | result: retrying | attempt: %d | client_id: %v | error: %v", i, c.config.ID, err)
-		time.Sleep(delay)
-	}
-	log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
-	return nil, err
 }
 
 // processBatches se encarga de leer líneas, generar mensajes y enviarlos en batches

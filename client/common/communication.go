@@ -5,6 +5,7 @@ import (
 	"net"
     "strings"
     "fmt"
+    "time"
 )
 
 func ReadResponse(reader *bufio.Reader, clientID string) (string, error) {
@@ -60,4 +61,19 @@ func CreateClientSocket(serverAddress string, clientID string) (net.Conn, error)
         return nil, err
     }
     return conn, nil
+}
+
+func ConnectWithRetry(attempts int, clientID string, serverAddress string) (net.Conn, error) {
+	var conn net.Conn
+	var err error
+	for i := 1; i <= attempts; i++ {
+		conn, err = CreateClientSocket(serverAddress, clientID)
+		if err == nil {
+			return conn, nil
+		}
+		log.Warningf("action: create_conn | result: retrying | attempt: %d | client_id: %v | error: %v", i, clientID, err)
+		time.Sleep(2 * time.Second)
+	}
+	log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", clientID, err)
+	return nil, fmt.Errorf("connection_error_after_retries: %w", err)
 }

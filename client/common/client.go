@@ -57,16 +57,10 @@ func (c *Client) StartClientLoop(ctx context.Context) {
             return
         }
 
-        var conn net.Conn
-		var err error	
-		for i := 1; i <= 3; i++ {
-			conn, err = CreateClientSocket(c.config.ServerAddress, c.config.ID)
-			if err == nil {
-				break
-			}
-			log.Warningf("action: create_conn | result: retrying | attempt: %d | client_id: %v | error: %v", i, c.config.ID, err)
-			time.Sleep(2 * time.Second)
-		}
+        if err := c.createClientSocket(); err != nil || c.conn == nil {
+            log.Errorf("action: connect | result: fail | client_id: %v", c.config.ID)
+            return
+        }
 
         if err := c.sendClientMessage(msgID); err != nil {
             log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)

@@ -116,7 +116,6 @@ func initClient() *common.Client {
 
 func main() {
 	client := initClient()
-	defer client.Close()
 	client.StartClientLoop()
 	os.Exit(0)
 }

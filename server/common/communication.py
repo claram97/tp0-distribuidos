@@ -1,34 +1,59 @@
 import logging
 
+class Connection:
+    """
+    Clase que maneja un socket TCP:
+    - Lectura de mensajes completos delimitados por '\n'
+    - Envío de mensajes asegurando que todos los bytes se envíen
+    """
+    def __init__(self, sock):
+        self.sock = sock
+        self.buffer = b""
 
-def read_message(client_sock):
-    buffer = b""
-    try:
-        while True:
-            chunk = client_sock.recv(1024)
-            if not chunk:
-                if not buffer:
-                    return None, RuntimeError("socket closed by peer")
-                break
-            buffer += chunk
-            if b"\n" in chunk:
-                break
+    def read_message(self):
+        """
+        Lee del socket hasta encontrar un mensaje completo.
+        Devuelve el mensaje como str. Guarda datos sobrantes en buffer.
+        """
+        while b"\n" not in self.buffer:
+            try:
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    if self.buffer:
+                        logging.warning(
+                            "action: read_message | result: fail | error: connection closed with incomplete message"
+                        )
+                        return None, RuntimeError("Connection closed with incomplete message")
+                    return None, None 
+                self.buffer += chunk
+            except OSError as e:
+                return None, RuntimeError(f"recv_error: {e}")
+
+        delimiter_pos = self.buffer.find(b"\n")
+        message_bytes = self.buffer[:delimiter_pos]
+        self.buffer = self.buffer[delimiter_pos + 1:]
 
         try:
-            msg = buffer.decode("utf-8").strip()
-            return msg, None
+            return message_bytes.decode("utf-8"), None
         except UnicodeDecodeError as e:
             return None, RuntimeError(f"decode_error: {e}")
-    except OSError as e:
-            return None, RuntimeError(f"recv_error: {e}")
 
-def send_message(client_sock, response_bytes):
-    total_sent = 0
-    while total_sent < len(response_bytes):
-        sent = client_sock.send(response_bytes[total_sent:])
-        if sent == 0:
-            raise RuntimeError("Socket connection broken")
-        total_sent += sent
+    def send_message(self, data: bytes):
+        """
+        Envía todos los bytes del mensaje a través del socket.
+        """
+        total_sent = 0
+        while total_sent < len(data):
+            try:
+                sent = self.sock.send(data[total_sent:])
+                if sent == 0:
+                    raise RuntimeError("Socket connection broken")
+                total_sent += sent
+            except OSError as e:
+                raise RuntimeError(f"send_error: {e}")
+
+    def close(self):
+        self.sock.close()
 
 def accept_new_connection(server_socket):
     """

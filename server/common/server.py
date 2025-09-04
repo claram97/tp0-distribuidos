@@ -36,14 +36,25 @@ class Server:
             thread.start()
 
     def _send_winner_numbers(self, client_id):
-        client_socket = self._client_connections[client_id]
-        for bet in load_bets():
+        with self._bets_lock:
+            bets = load_bets()
+
+        with self._client_connections_lock:
+            if client_id not in self._client_connections:
+                logging.warning(f"action: send_winner_numbers | result: fail | reason: client_id {client_id} not found")
+                return
+            client_socket = self._client_connections[client_id]
+
+        for bet in bets:
             if has_won(bet):
-                if bet.agency == client_id and bet.agency in self._client_connections.keys():
+                if bet.agency == client_id:
                     logging.info(f"action: notify_winner | result: success | client_id: {bet.agency} | winner: {bet.first_name} {bet.last_name} | number: {bet.number}")
                     response = f"WINNER|{bet.first_name}|{bet.last_name}|{bet.number}\n"
-                    client_socket = self._client_connections[bet.agency]
-                    client_socket.sendall(response.encode())
+                    # Asegurarse de que el socket aún existe antes de enviar
+                    with self._client_connections_lock:
+                        if bet.agency in self._client_connections:
+                            client_socket = self._client_connections[bet.agency]
+                            client_socket.sendall(response.encode())
 
         response = "ACK_FIN\n"
         client_socket.sendall(response.encode())
@@ -51,6 +62,9 @@ class Server:
         datos_recibidos = client_socket.recv(1024)
         if "ACK_FIN" in datos_recibidos.decode():
             client_socket.close()
+            with self._client_connections_lock:
+                if client_id in self._client_connections:
+                    del self._client_connections[client_id]
             logging.info(f"action: ack_fin_received | result: success | client_id: {client_id}")
 
     def __handle_client_connection(self, client_sock):
@@ -71,10 +85,8 @@ class Server:
                     break
                 
                 if msg == "FIN":
-                    # self.__store_bets_and_finish(client_sock)
                     break
                 
-                # --- LÓGICA DE DECODIFICACIÓN DE BATCH ACTUALIZADA ---
                 bets, batch_error = decode_batch(msg)
                 # Obtener client_id del primer lote recibido
                 if client_id is None and bets and len(bets) > 0:
@@ -94,14 +106,12 @@ class Server:
                 decode_error = decode_bets_in_batch(bets, client_sock, self._client_connections, self._client_connections_lock, self._bets_lock)
 
                 if decode_error:
-                    # Hubo error al decodificar una apuesta dentro del lote
                     logging.info(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}")
                     response = "BATCH_ERROR\n"
                     client_sock.sendall(response.encode())
                     logging.info(f"action: send_error_batch | result: fail | reason: {decode_error}")
                     break
                 else:
-                    # Todo el lote se procesó correctamente
                     logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
                     logging.info(f"action: batch_processed | result: success | bets_received: {len(bets)}")
                     response = "ACK_BATCH\n"

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"context"
 
 	"github.com/op/go-logging"
 )
@@ -50,40 +51,71 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-// StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
-	// There is an autoincremental msgID to identify every message sent
-	// Messages if the message amount threshold has not been surpassed
-	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		// Create the connection the server in every loop iteration. Send an
-		c.createClientSocket()
+func (c *Client) StartClientLoop(ctx context.Context) {
+    for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
+        if c.shouldStop(ctx) {
+            return
+        }
 
-		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"[CLIENT %v] Message N°%v\n",
-			c.config.ID,
-			msgID,
-		)
-		msg, err := bufio.NewReader(c.conn).ReadString('\n')
-		c.conn.Close()
+        if err := c.createClientSocket(); err != nil || c.conn == nil {
+            log.Errorf("action: connect | result: fail | client_id: %v", c.config.ID)
+            return
+        }
 
-		if err != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
-			)
-			return
-		}
+        if err := c.sendClientMessage(msgID); err != nil {
+            log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+            c.conn.Close()
+            return
+        }
 
-		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-			c.config.ID,
-			msg,
-		)
+        msg, err := c.receiveServerMessage()
+        c.conn.Close()
+        if err != nil {
+            log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+            return
+        }
 
-		// Wait a time between sending one message and the next one
-		time.Sleep(c.config.LoopPeriod)
+        log.Infof("action: receive_message | result: success | client_id: %v | msg: %v", c.config.ID, msg)
 
-	}
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+        if c.shouldStopDuringSleep(ctx) {
+            return
+        }
+    }
+
+    log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+}
+
+func (c *Client) shouldStop(ctx context.Context) bool {
+    select {
+    case <-ctx.Done():
+        return true
+    default:
+        return false
+    }
+}
+
+func (c *Client) shouldStopDuringSleep(ctx context.Context) bool {
+    select {
+    case <-ctx.Done():
+        return true
+    case <-time.After(c.config.LoopPeriod):
+        return false
+    }
+}
+
+func (c *Client) sendClientMessage(msgID int) error {
+    message := fmt.Sprintf("[CLIENT %v] Message N°%v\n", c.config.ID, msgID)
+    _, err := fmt.Fprintf(c.conn, message)
+    return err
+}
+
+func (c *Client) receiveServerMessage() (string, error) {
+    return bufio.NewReader(c.conn).ReadString('\n')
+}
+
+func (c *Client) Close() {
+    if c.conn != nil {
+        c.conn.Close()
+        log.Info("action: client_conn_closed | result: success")
+    }
 }

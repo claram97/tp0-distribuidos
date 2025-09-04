@@ -137,67 +137,73 @@ func getClientConfig(v *viper.Viper) common.ClientConfig {
 }
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-	defer stop()
+    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+    defer stop()
 
-	v, err := InitConfig()
-	if err != nil {
-		log.Criticalf("%s", err)
-		os.Exit(1)
-	}
+    clientConfig, err := setupConfigAndLogger()
+    if err != nil {
+        os.Exit(1)
+    }
 
-	if err := InitLogger(v.GetString("log.level")); err != nil {
-		log.Criticalf("%s", err)
-		os.Exit(1)
-	}
+    file, err := openAgencyFile(clientConfig.ID)
+    if err != nil {
+        log.Errorf("action: file_open | result: fail | client_id: %s | error: %v", clientConfig.ID, err)
+        os.Exit(1)
+    }
+    defer file.Close()
 
-	PrintConfig(v)
+    client := common.NewClient(clientConfig)
+    done := make(chan struct{})
+    var clientErr error
 
-	// time.Sleep(10 * time.Second)
-	clientConfig := getClientConfig(v)
-	client := common.NewClient(clientConfig)
+    go func() {
+        clientErr = client.StartClientLoop(ctx, file)
+        close(done)
+    }()
 
-	fileName := fmt.Sprintf("../data/agency-%s.csv", clientConfig.ID)
-	file, err := os.Open(fileName)
-	if err != nil {
-		log.Errorf("action: file_open | result: fail | client_id: %s | error: %v", clientConfig.ID, err)
-		os.Exit(1)
-	}
+    handleExit(done, ctx, clientErr, client, file, clientConfig.ID)
+}
 
-	done := make(chan struct{})
-	var clientErr error
-	go func() {
-		clientErr = client.StartClientLoop(ctx, file)
-		close(done)
-	}()
+func setupConfigAndLogger() (common.ClientConfig, error) {
+    v, err := InitConfig()
+    if err != nil {
+        log.Criticalf("%s", err)
+        return common.ClientConfig{}, err
+    }
 
-	select {
-	case <-done:
-		if clientErr != nil {
-			log.Errorf("action: client_finished | result: fail | client_id: %s | error: %v", clientConfig.ID, clientErr)
-			file.Close()
-			client.Close()
-			if strings.Contains(clientErr.Error(), "batch_error") || strings.Contains(clientErr.Error(), "final_batch_error") {
-				os.Exit(2)
-			} else if strings.Contains(clientErr.Error(), "connection_error") {
-				os.Exit(3)
-			} else {
-				os.Exit(1)
-			}
-		}
-		log.Infof("action: client_finished | result: success | client_id: %s", clientConfig.ID)
-		file.Close()
-		client.Close()
-		os.Exit(0)
-	case <-ctx.Done():
-		log.Infof("action: sigterm_received | result: exiting | client_id: %s", clientConfig.ID)
-		file.Close()
-		client.Close()
-		os.Exit(0)
-	}
+    if err := InitLogger(v.GetString("log.level")); err != nil {
+        log.Criticalf("%s", err)
+        return common.ClientConfig{}, err
+    }
 
-	file.Close()
-	client.Close()
-	os.Exit(0)
+    PrintConfig(v)
+    return getClientConfig(v), nil
+}
 
+func openAgencyFile(clientID string) (*os.File, error) {
+    fileName := fmt.Sprintf("../data/agency-%s.csv", clientID)
+    return os.Open(fileName)
+}
+
+func handleExit(done <-chan struct{}, ctx context.Context, clientErr error, client *common.Client, file *os.File, clientID string) {
+    select {
+    case <-done:
+        if clientErr != nil {
+            log.Errorf("action: client_finished | result: fail | client_id: %s | error: %v", clientID, clientErr)
+            file.Close()
+            client.Close()
+            if strings.Contains(clientErr.Error(), "batch_error") || strings.Contains(clientErr.Error(), "final_batch_error") {
+                os.Exit(2)
+            } else if strings.Contains(clientErr.Error(), "connection_error") {
+                os.Exit(3)
+            } else {
+                os.Exit(1)
+            }
+        }
+        log.Infof("action: exit | result: success")
+    case <-ctx.Done():
+        log.Infof("action: exit | result: success")
+    }
+    client.Close()
+    os.Exit(0)
 }

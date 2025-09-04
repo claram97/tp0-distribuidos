@@ -131,10 +131,10 @@ func main() {
 		if client != nil {
 			client.Close() 
 		}
-		log.Infof("action: exit | result: success | reason: sigterm_received")
+		log.Infof("action: exit | result: success")
 		os.Exit(0)
 	case <-done:
-		log.Infof("action: normal_exit | result: success | reason: loop_completed")
+		log.Infof("action: normal_exit | result: success")
 		if client != nil {
 			client.Close() 
 		}

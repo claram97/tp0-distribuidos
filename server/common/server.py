@@ -1,4 +1,3 @@
-import csv
 import socket
 import logging
 import threading
@@ -10,7 +9,6 @@ from common.communicationUtils import decode_batch, decode_message, encode_messa
 
 class Server:
     def __init__(self, port, listen_backlog, clients_number):
-        # Initialize server socket
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)

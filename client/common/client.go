@@ -46,7 +46,7 @@ func (c *Client) shouldStop(ctx context.Context) bool {
     }
 }
 
-func (c *Client) SendMessage(ctx context.Context) {
+func (c *Client) SendBet(ctx context.Context) {
     msgID := 1
     if c.shouldStop(ctx) {
         return

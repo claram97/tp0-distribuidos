@@ -187,7 +187,7 @@ func initClient() *common.Client {
 }
 
 func runClient(ctx context.Context, client *common.Client) {
-    client.SendMessage(ctx)
+    client.SendBet(ctx)
 }
 
 func main() {

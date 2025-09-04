@@ -50,6 +50,20 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
+func (c *Client) connectWithRetry(attempts int) error {
+    var err error
+    for i := 1; i <= attempts; i++ {
+        err = c.createClientSocket()
+        if err == nil {
+            return nil
+        }
+        log.Warningf("action: create_conn | result: retrying | attempt: %d | client_id: %v | error: %v", i, c.config.ID, err)
+        time.Sleep(2 * time.Second)
+    }
+    log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
+    return fmt.Errorf("connection_error_after_retries: %w", err)
+}
+
 func (c *Client) sendClientMessage(msgID int) error {
     message := fmt.Sprintf("[CLIENT %v] Message N°%v\n", c.config.ID, msgID)
     _, err := fmt.Fprintf(c.conn, message)
@@ -65,8 +79,12 @@ func (c *Client) StartClientLoop() {
 	// There is an autoincremental msgID to identify every message sent
 	// Messages if the message amount threshold has not been surpassed
 	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		// Create the connection the server in every loop iteration. Send an
-		c.createClientSocket()
+    	err := c.connectWithRetry(3)
+		if err != nil {
+			log.Errorf("action: create_conn | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return
+		}
+		defer c.conn.Close()
 
 		// TODO: Modify the send to avoid short-write
 		 if err := c.sendClientMessage(msgID); err != nil {

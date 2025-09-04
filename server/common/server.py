@@ -65,7 +65,7 @@ class Server:
         if msg is None:
             logging.info("action: client_disconnected_unexpectedly | result: success")
             return
-        if "ACK_FIN" in msg.decode():
+        if "ACK_FIN" in msg:
             client_socket.close()
             with self._client_connections_lock:
                 if client_id in self._client_connections:

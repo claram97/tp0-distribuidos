@@ -115,43 +115,76 @@ def encode_message(status, info):
 
     return response.encode('utf-8')
 
-def decode_batch(batch_message):
+def _split_batch_header_payload(batch_message):
     """
-    Decodifica y valida un lote completo (batch), separando el encabezado del
-    payload, validando la longitud en CARACTERES y extrayendo las apuestas.
+    Separa el mensaje de batch en encabezado y payload.
+    Devuelve (header, payload, None) si es exitoso, o (None, None, error_msg) si falla.
     """
+    parts = batch_message.split('|', 1)
+    if len(parts) != 2:
+        return None, None, "Formato de batch inválido (no se encontró 'BATCH_LEN|payload')"
+    return parts[0], parts[1], None
+
+def _validate_batch_header_and_length(header, payload):
+    """
+    Valida el header del batch ('BATCH_LEN=') y que la longitud del payload sea la correcta.
+    Devuelve un mensaje de error si falla, o None si es exitoso.
+    """
+    if not header.startswith("BATCH_LEN="):
+        return "El encabezado del batch no comienza con 'BATCH_LEN='"
+    
     try:
-        parts = batch_message.split('|', 1)
-        if len(parts) != 2:
-            return None, "Formato de batch inválido (no se encontró 'BATCH_LEN|payload')"
-
-        header, payload = parts
-
-        if not header.startswith("BATCH_LEN="):
-            return None, "El encabezado del batch no comienza con 'BATCH_LEN='"
-        
         len_value_str = header.split('=')[1]
         expected_len = int(len_value_str)
+    except (IndexError, ValueError) as e:
+        return f"Error al parsear el encabezado del batch: {e}"
 
-        if len(payload) + 1 != expected_len:
-            error_msg = f"La longitud del payload del batch no coincide (esperada: {expected_len}, real: {len(payload) + 1})"
-            return None, error_msg
+    # Se suma 1 a la longitud real para contar el primer separador '|'
+    if len(payload) + 1 != expected_len:
+        error_msg = f"La longitud del payload del batch no coincide (esperada: {expected_len}, real: {len(payload) + 1})"
+        return error_msg
+    
+    return None # Sin errores
 
-        footer = "|END_BATCH"
-        if not payload.endswith(footer):
-            return None, "El payload del batch no termina con el footer '|END_BATCH'"
-        
-        bets_body = payload[:-len(footer)]
-        
-        individual_bets = [bet for bet in bets_body.split(':') if bet]
+def _extract_bets_from_payload(payload):
+    """
+    Valida y remueve el footer '|END_BATCH' y extrae las apuestas individuales.
+    Devuelve (bets_list, None) si es exitoso, o (None, error_msg) si falla.
+    """
+    footer = "|END_BATCH"
+    if not payload.endswith(footer):
+        return None, "El payload del batch no termina con el footer '|END_BATCH'"
+    
+    # Se extrae el cuerpo del mensaje que contiene las apuestas
+    bets_body = payload[:-len(footer)]
+    
+    # Se separan las apuestas por ':' y se eliminan posibles strings vacíos
+    individual_bets = [bet for bet in bets_body.split(':') if bet]
+
+    return individual_bets, None
+
+def decode_batch(batch_message):
+    """
+    Decodifica y valida un lote completo (batch) orquestando funciones auxiliares.
+    """
+    try:
+        header, payload, error = _split_batch_header_payload(batch_message)
+        if error:
+            return None, error
+
+        error = _validate_batch_header_and_length(header, payload)
+        if error:
+            return None, error
+
+        individual_bets, error = _extract_bets_from_payload(payload)
+        if error:
+            return None, error
 
         return individual_bets, None
 
-    except (ValueError, IndexError) as e:
-        return None, f"Error al parsear el encabezado del batch: {e}"
     except Exception as e:
         return None, f"Error inesperado al decodificar el batch: {e}"
-
+    
 def decode_bets_in_batch(bets, client_sock, client_connections, client_connections_lock, bets_lock):
     """
     Decodifica, valida y procesa una lista de apuestas individuales de un batch,

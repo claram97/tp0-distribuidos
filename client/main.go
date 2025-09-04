@@ -136,7 +136,7 @@ func main() {
 
     select {
     case <-ctx.Done():
-        log.Infof("action: exit | result: sigterm")
+        log.Infof("action: exit | result: success")
     case <-done:
         log.Infof("action: exit | result: success")
     }

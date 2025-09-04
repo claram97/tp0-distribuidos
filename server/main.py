@@ -7,6 +7,8 @@ from common.server import Server
 import logging
 import os
 
+SERVER_CONFIG_FILE = "/server/config.ini"
+
 def initialize_config():
     """ Parse env variables or config file to find program config params
 
@@ -20,7 +22,7 @@ def initialize_config():
 
     config = ConfigParser(os.environ)
     # If config.ini does not exists original config object is not modified
-    config.read("/server/config.ini")
+    config.read(SERVER_CONFIG_FILE)
 
     config_params = {}
     try:

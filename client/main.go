@@ -153,11 +153,8 @@ func PrintConfig(v *viper.Viper) {
     )
 }
 
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-	defer stop()
-
-	v, err := InitConfig()
+func initClient() *common.Client {
+    v, err := InitConfig()
 	if err != nil {
 		log.Criticalf("%s", err)
 		os.Exit(1)
@@ -186,11 +183,23 @@ func main() {
 		Data:          betData,
 	}
 
-	client := common.NewClient(clientConfig)
+    return common.NewClient(clientConfig)
+}
+
+func runClient(ctx context.Context, client *common.Client) {
+    client.StartClientLoop(ctx)
+}
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	defer stop()
+
+	client:= initClient()
+	defer client.Close()
 
 	done := make(chan struct{})
 	go func() {
-		client.StartClientLoop(ctx)
+		runClient(ctx, client)
 		close(done)
 	}()
 
@@ -201,5 +210,5 @@ func main() {
 		log.Infof("action: sigterm_received | result: exiting | client_id: %s", clientConfig.ID)
 	}
 
-	client.Close()
+	os.Exit(0)
 }

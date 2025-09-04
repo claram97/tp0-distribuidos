@@ -2,7 +2,7 @@ package common
 
 import (
 	"fmt"
-	"strconv"
+	"bufio"
 	"strings"
 	"unicode/utf8"
 )
@@ -24,49 +24,17 @@ func EncodedBet(data BetData, clientID string, msgID int) string {
 	return fmt.Sprintf("LEN=%d|%s", utf8.RuneCountInString(dataStr), dataStr)
 }
 
-func ParseResponse(response string) (string, string, error) {
-	parts := strings.Split(response, "|")
-	if len(parts) < 4 {
-		return "", "", fmt.Errorf("invalid_format: %q", response)
-	}
-
-	expectedLen, err := parseLenField(parts[0])
+func CheckBatchError(reader *bufio.Reader, clientID string) error {
+	response, err := reader.ReadString('\n')
 	if err != nil {
-		return "", "", fmt.Errorf("invalid_len_field: %w", err)
+		log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
+		return err
 	}
 
-	responseBody := strings.Join(parts[1:4], "|")
-	if len(responseBody) != expectedLen {
-		return "", "", fmt.Errorf("len_mismatch: expected %d, got %d", expectedLen, len(responseBody))
+	trimmedResponse := strings.TrimSpace(response)
+	log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
+	if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
+		return fmt.Errorf("server returned batch error")
 	}
-
-	status, info, err := parseStatusAndInfo(parts[1], parts[2])
-	if err != nil {
-		return "", "", fmt.Errorf("invalid_status_info: %w", err)
-	}
-
-	return status, info, nil
-}
-
-func parseStatusAndInfo(statusField, infoField string) (string, string, error) {
-	statusParts := strings.Split(statusField, "=")
-	infoParts := strings.Split(infoField, "=")
-
-	if len(statusParts) != 2 || len(infoParts) != 2 {
-		return "", "", fmt.Errorf("bad format in status/info fields: %q | %q", statusField, infoField)
-	}
-
-	return statusParts[1], infoParts[1], nil
-}
-
-func parseLenField(field string) (int, error) {
-	parts := strings.Split(field, "=")
-	if len(parts) != 2 {
-		return 0, fmt.Errorf("bad format in LEN field: %q", field)
-	}
-	expectedLen, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return 0, fmt.Errorf("LEN not an integer: %q", parts[1])
-	}
-	return expectedLen, nil
+	return nil
 }

@@ -63,24 +63,9 @@ func sendBatch(conn net.Conn, reader *bufio.Reader, batch string, clientID strin
 	}
 	log.Infof("action: %s | result: success | client_id: %v", action, clientID)
 
-	if err := ReadResponse(reader, clientID); err != nil {
+	if err := CheckBatchError(reader, clientID); err != nil {
 		log.Errorf("action: batch_ack | result: fail | client_id: %v | error: %v", clientID, err)
 		return fmt.Errorf("batch_error: %w", err)
-	}
-	return nil
-}
-
-func ReadResponse(reader *bufio.Reader, clientID string) error {
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		log.Errorf("action: read_response | result: fail | client_id: %v | error: %v", clientID, err)
-		return err
-	}
-
-	trimmedResponse := strings.TrimSpace(response)
-	log.Infof("action: response_received | result: success | client_id: %v | response: %s", clientID, trimmedResponse)
-	if trimmedResponse == "BATCH_ERROR" || trimmedResponse == "ERROR_BATCH" {
-		return fmt.Errorf("server returned batch error")
 	}
 	return nil
 }
@@ -160,7 +145,7 @@ func (c *Client) StartClientLoop(ctx context.Context, agencyFile *os.File) error
 	if err := SendMessage(conn, "FIN\n", c.config.ID); err != nil {
 		return fmt.Errorf("send_fin_error: %w", err)
 	}
-	if err := ReadResponse(reader, c.config.ID); err != nil {
+	if err := CheckBatchError(reader, c.config.ID); err != nil {
 		return fmt.Errorf("fin_response_error: %w", err)
 	}
 
